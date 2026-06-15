@@ -1,0 +1,13 @@
+i want to add a small graph to the chatbox that shows the current context of a chat. the total length of the bar is the 100% of the context window for the model i'm using in the chat, and the green will fill the bar based on the current size of the context in the chat.
+
+---
+
+it's not showing in the local build...
+
+---
+
+ok it's there. kinda. there's no label (e.g. 24k/128k) and there's no color
+
+---
+
+ok so i think it's there now -- but it's still not working correctly i don't think. can we verify things?
