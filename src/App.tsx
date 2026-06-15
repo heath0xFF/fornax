@@ -139,6 +139,8 @@ interface ConvRuntime {
   /** Compaction: the persisted summary and the message id it covers up to. */
   summary: string | null;
   summaryThrough: number | null;
+  /** Server-reported prompt tokens from the last turn's usage event. */
+  promptTokens: number;
 }
 
 const EMPTY_CONV: ConvRuntime = {
@@ -147,6 +149,7 @@ const EMPTY_CONV: ConvRuntime = {
   queue: [],
   summary: null,
   summaryThrough: null,
+  promptTokens: 0,
 };
 
 // One in-flight stream's mutable context. `convId` starts as the temp id of an
@@ -227,13 +230,16 @@ export function App() {
   );
   const streaming =
     activeConvId != null ? convStore[activeConvId]?.streaming ?? false : false;
-  // Current context size of the active chat (token estimate over its messages).
-  // Recomputed when the message count changes or a stream ends — not per token.
-  const contextTokens = useMemo(
-    () => messages.reduce((acc, msg) => acc + countTokens(msg.text ?? ""), 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeConvId, messages.length, streaming],
-  );
+  // Current context size of the active chat. Prefer the server-reported
+  // prompt_tokens from the last turn's usage event (authoritative — includes
+  // system prompt, tool overhead, images). Fall back to a frontend estimate
+  // over message text when no usage event has arrived yet.
+  const contextTokens = useMemo(() => {
+    const serverTokens =
+      activeConvId != null ? convStore[activeConvId]?.promptTokens ?? 0 : 0;
+    if (serverTokens > 0) return serverTokens;
+    return messages.reduce((acc, msg) => acc + countTokens(msg.text ?? ""), 0);
+  }, [activeConvId, convStore, messages]);
   const contextWindow =
     config?.saved_endpoints.find((e) => e.url === settings?.endpoint)
       ?.context_window ?? null;
@@ -736,15 +742,21 @@ export function App() {
               },
             ]);
             break;
-          case "usage":
+          case "usage": {
+            const pt = ev.prompt_tokens ?? 0;
             setMetrics((m) => ({
               ...m,
-              promptTokens: ev.prompt_tokens ?? m.promptTokens,
+              promptTokens: pt,
               completionTokens: ev.completion_tokens ?? m.completionTokens,
               totalTokens: ev.total_tokens ?? m.totalTokens,
               cost: ev.cost ?? m.cost,
             }));
+            // Track authoritative prompt tokens per conversation for the
+            // context bar — the frontend estimate (countTokens over messages)
+            // misses system prompt, tool overhead, and images.
+            patchConv(session.convId, () => ({ promptTokens: pt }));
             break;
+          }
           case "request_metrics":
             setMetrics((m) => ({
               ...m,
@@ -1242,6 +1254,8 @@ export function App() {
             input={composerInput}
             onInputChange={setComposerInput}
             tokenCount={tokenCount}
+            contextTokens={contextTokens}
+            contextWindow={contextWindow}
             findCombo={config.hotkeys.find}
             focusSignal={focusSignal}
             onResolveTool={resolveTool}

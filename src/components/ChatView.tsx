@@ -11,6 +11,7 @@ import { MessageItem } from "./MessageItem";
 import { ApprovalCard, type ApprovalDecision } from "./ApprovalCard";
 import { matchCombo } from "../lib/hotkeys";
 import { useDialog } from "./Dialog";
+import { fmtTokens } from "../lib/tokens";
 
 interface Props {
   config: Config;
@@ -25,6 +26,10 @@ interface Props {
   input: string;
   onInputChange: (v: string | ((prev: string) => string)) => void;
   tokenCount: number;
+  /** Current context usage in tokens (estimated over messages). */
+  contextTokens: number;
+  /** Endpoint's context window in tokens; null when unknown. */
+  contextWindow: number | null;
   findCombo: string;
   focusSignal: number;
   onResolveTool: (decision: ApprovalDecision) => void;
@@ -62,6 +67,23 @@ const RUNTIME_LABEL: Record<string, string> = {
   llamaswap: "LLAMA-SWAP",
   openai: "OPENAI",
 };
+
+function ContextBar({ used, total }: { used: number; total: number }) {
+  const pct = Math.min(1, used / total);
+  const near = pct >= 0.8;
+  return (
+    <span className="hint ctx-bar-inline" title={`${fmtTokens(used)} / ${fmtTokens(total)} tokens`}>
+      {fmtTokens(used)} / {fmtTokens(total)}
+      <span className="ctx-bar-track">
+        <span
+          className="ctx-bar-fill"
+          data-near={near ? "1" : undefined}
+          style={{ width: `${(pct * 100).toFixed(0)}%` }}
+        />
+      </span>
+    </span>
+  );
+}
 
 function runtimeBadge(config: Config, endpoint: string): string {
   // Prefer the configured runtime for this endpoint.
@@ -498,6 +520,12 @@ export function ChatView(props: Props) {
                 ＋
               </button>
               <span className="hint">{props.settings.model ?? "select a model"}</span>
+              {props.messages.length > 0 && (
+                <ContextBar
+                  used={props.contextTokens}
+                  total={props.contextWindow ?? 200_000}
+                />
+              )}
               {props.tokenCount > 0 && (
                 <span className="hint token-count">{props.tokenCount} tok</span>
               )}

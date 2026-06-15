@@ -1043,6 +1043,31 @@ select.model-select {
   background: var(--panel);
 }
 
+/* ---------- context bar (inline, in composer row) ---------- */
+.ctx-bar-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+.ctx-bar-track {
+  height: 3px;
+  width: 28px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  overflow: hidden;
+}
+.ctx-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.ctx-bar-fill[data-near="1"] {
+  background: var(--warn);
+}
+
 /* ---------- context tile bar (Status) ---------- */
 .ctx-bar {
   position: relative;
