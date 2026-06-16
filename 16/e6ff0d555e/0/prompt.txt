@@ -1,0 +1,1 @@
+in the last few pushes, i worked with a model to try to build some ui around total context and context usage. i tried to add a current context size of a chat, as well as a context bar in the textbox. it's not working correctly -- please verify and update things as needed.
