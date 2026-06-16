@@ -41,8 +41,9 @@ export function BenchView({ endpoints, defaultEndpoint }: Props) {
     if (!endpoint) return;
     api
       .fetchModels(endpoint)
-      .then((ms) => {
+      .then((infos) => {
         if (!live) return;
+        const ms = infos.map((m) => m.id);
         setModels(ms);
         setModel((cur) => (cur && ms.includes(cur) ? cur : (ms[0] ?? "")));
       })

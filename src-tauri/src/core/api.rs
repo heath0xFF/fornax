@@ -35,11 +35,23 @@ struct OllamaTagsResponse {
 #[derive(Debug, Deserialize)]
 struct OpenAIModel {
     id: String,
+    /// vLLM and oMLX report this field.
+    #[serde(default)]
+    max_model_len: Option<u32>,
+    /// OpenRouter reports this field.
+    #[serde(default)]
+    context_length: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenAIModelsResponse {
     data: Vec<OpenAIModel>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub context_window: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -169,7 +181,7 @@ const NO_MODELS_HINT: &str = "No models available at this endpoint. \
     For LM Studio: load a model in the Developer tab and start the server. \
     For Ollama: run `ollama pull <model>`.";
 
-pub async fn fetch_models(base_url: &str, api_key: Option<&str>) -> Result<Vec<String>, String> {
+pub async fn fetch_models(base_url: &str, api_key: Option<&str>) -> Result<Vec<ModelInfo>, String> {
     let client = Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .connect_timeout(CONNECT_TIMEOUT)
@@ -213,7 +225,14 @@ pub async fn fetch_models(base_url: &str, api_key: Option<&str>) -> Result<Vec<S
     if let Ok(resp) = request.send().await {
         if resp.status().is_success() {
             if let Ok(openai_resp) = resp.json::<OpenAIModelsResponse>().await {
-                let models: Vec<String> = openai_resp.data.into_iter().map(|m| m.id).collect();
+                let models: Vec<ModelInfo> = openai_resp
+                    .data
+                    .into_iter()
+                    .map(|m| ModelInfo {
+                        context_window: m.max_model_len.or(m.context_length),
+                        id: m.id,
+                    })
+                    .collect();
                 if !models.is_empty() {
                     return Ok(models);
                 }
@@ -224,12 +243,17 @@ pub async fn fetch_models(base_url: &str, api_key: Option<&str>) -> Result<Vec<S
 
     // Fall back to Ollama /api/tags
     let api_base = url.trim_end_matches("/v1");
-    let tags_result: Result<Vec<String>, String> =
+    let tags_result: Result<Vec<ModelInfo>, String> =
         match client.get(format!("{api_base}/api/tags")).send().await {
             Ok(r) if r.status().is_success() => r
                 .json::<OllamaTagsResponse>()
                 .await
-                .map(|t| t.models.into_iter().map(|m| m.name).collect())
+                .map(|t| {
+                    t.models
+                        .into_iter()
+                        .map(|m| ModelInfo { id: m.name, context_window: None })
+                        .collect()
+                })
                 .map_err(|e| format!("Failed to parse models: {e}")),
             Ok(r) => Err(format!("Models endpoint returned {}", r.status())),
             Err(e) => Err(format!("Failed to fetch models: {e}")),

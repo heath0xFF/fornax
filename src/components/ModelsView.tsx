@@ -45,7 +45,8 @@ export function ModelsView({
     await Promise.all(
       endpoints.map(async (e) => {
         try {
-          const models = await api.fetchModels(e.url);
+          const infos = await api.fetchModels(e.url);
+          const models = infos.map((m) => m.id);
           setStates((s) => ({ ...s, [e.url]: { status: "ok", models } }));
         } catch (err) {
           setStates((s) => ({

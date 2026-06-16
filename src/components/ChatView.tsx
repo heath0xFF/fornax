@@ -68,19 +68,26 @@ const RUNTIME_LABEL: Record<string, string> = {
   openai: "OPENAI",
 };
 
-function ContextBar({ used, total }: { used: number; total: number }) {
+function ContextBar({ used, total }: { used: number; total: number | null }) {
+  // No context window configured — show just the count, no bar.
+  if (total == null) {
+    return (
+      <span className="hint ctx-bar-inline" title={`~${used} tokens (context window unknown)`}>
+        {fmtTokens(used)} tok
+      </span>
+    );
+  }
   const pct = Math.min(1, used / total);
   const near = pct >= 0.8;
   return (
     <span className="hint ctx-bar-inline" title={`${fmtTokens(used)} / ${fmtTokens(total)} tokens`}>
-      {fmtTokens(used)} / {fmtTokens(total)}
-      <span className="ctx-bar-track">
+      <span className="ctx-bar-track" data-near={near ? "1" : undefined}>
         <span
           className="ctx-bar-fill"
-          data-near={near ? "1" : undefined}
           style={{ width: `${(pct * 100).toFixed(0)}%` }}
         />
       </span>
+      {fmtTokens(used)}/{fmtTokens(total)}
     </span>
   );
 }
@@ -520,17 +527,17 @@ export function ChatView(props: Props) {
                 ＋
               </button>
               <span className="hint">{props.settings.model ?? "select a model"}</span>
-              {props.messages.length > 0 && (
+              {props.messages.length > 0 && props.contextTokens > 0 && (
                 <ContextBar
                   used={props.contextTokens}
-                  total={props.contextWindow ?? 200_000}
+                  total={props.contextWindow}
                 />
               )}
               {props.tokenCount > 0 && (
                 <span className="hint token-count">{props.tokenCount} tok</span>
               )}
               {props.streaming ? (
-                <>
+                <div className="composer-send-group">
                   {input.trim() && (
                     <button
                       className="send-btn"
@@ -543,7 +550,7 @@ export function ChatView(props: Props) {
                   <button className="stop-btn" onClick={props.onStop}>
                     ■ Stop
                   </button>
-                </>
+                </div>
               ) : (
                 <button
                   className="send-btn"

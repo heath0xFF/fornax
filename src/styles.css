@@ -978,8 +978,16 @@ select.model-select {
   background: var(--panel-3);
   color: var(--dim);
 }
-.stop-btn {
+.composer-send-group {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.composer-send-group .send-btn {
+  margin-left: 0;
+}
+.stop-btn {
   background: transparent;
   color: var(--danger);
   border: 1px solid #5a2a2c;
@@ -1051,21 +1059,25 @@ select.model-select {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--dim);
+  white-space: nowrap;
 }
 .ctx-bar-track {
   height: 3px;
-  width: 28px;
+  width: 32px;
+  flex-shrink: 0;
   border-radius: 999px;
   background: var(--panel-3);
   overflow: hidden;
 }
+.ctx-bar-track[data-near="1"] .ctx-bar-fill {
+  background: var(--warn);
+}
 .ctx-bar-fill {
+  display: block;
   height: 100%;
   border-radius: 999px;
   background: var(--accent);
-}
-.ctx-bar-fill[data-near="1"] {
-  background: var(--warn);
+  transition: width 0.3s ease;
 }
 
 /* ---------- context tile bar (Status) ---------- */

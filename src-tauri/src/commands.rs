@@ -376,7 +376,7 @@ pub fn save_config(state: State<'_, AppState>, mut config: Config) -> Result<(),
 pub async fn fetch_models(
     state: State<'_, AppState>,
     endpoint: String,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<api::ModelInfo>, String> {
     let api_key = state.api_key_for(&endpoint);
     api::fetch_models(&endpoint, api_key.as_deref()).await
 }

@@ -44,6 +44,10 @@ const EMPTY_METRICS: LiveMetrics = {
   peakDecode: 0,
   peakTtft: 0,
   peakPrefill: 0,
+  avgDecode: null,
+  avgTtft: null,
+  avgPrefill: null,
+  avgCount: 0,
   promptTokens: 0,
   completionTokens: 0,
   totalTokens: 0,
@@ -176,6 +180,8 @@ export function App() {
   convStoreRef.current = convStore;
   const [settings, setSettings] = useState<SettingsDto | null>(null);
   const [models, setModels] = useState<string[]>([]);
+  // context_window per model id, populated when models are fetched
+  const [modelCtxWindows, setModelCtxWindows] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [metrics, setMetrics] = useState<LiveMetrics>(EMPTY_METRICS);
@@ -230,19 +236,24 @@ export function App() {
   );
   const streaming =
     activeConvId != null ? convStore[activeConvId]?.streaming ?? false : false;
-  // Current context size of the active chat. Prefer the server-reported
-  // prompt_tokens from the last turn's usage event (authoritative — includes
-  // system prompt, tool overhead, images). Fall back to a frontend estimate
-  // over message text when no usage event has arrived yet.
+  // Server-reported prompt tokens for the active chat (authoritative —
+  // includes system prompt, tool overhead, images). 0 until the first usage
+  // event arrives.
+  const serverPromptTokens =
+    activeConvId != null ? convStore[activeConvId]?.promptTokens ?? 0 : 0;
+  // Current context size of the active chat. When the server has reported
+  // prompt_tokens use them; otherwise estimate from message text. The fallback
+  // recomputes only when the message count changes or streaming ends — NOT on
+  // every token event during streaming — so the bar doesn't thrash.
   const contextTokens = useMemo(() => {
-    const serverTokens =
-      activeConvId != null ? convStore[activeConvId]?.promptTokens ?? 0 : 0;
-    if (serverTokens > 0) return serverTokens;
+    if (serverPromptTokens > 0) return serverPromptTokens;
     return messages.reduce((acc, msg) => acc + countTokens(msg.text ?? ""), 0);
-  }, [activeConvId, convStore, messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverPromptTokens, activeConvId, messages.length, streaming]);
   const contextWindow =
-    config?.saved_endpoints.find((e) => e.url === settings?.endpoint)
-      ?.context_window ?? null;
+    (settings?.model != null ? modelCtxWindows[settings.model] ?? null : null) ??
+    (config?.saved_endpoints.find((e) => e.url === settings?.endpoint)
+      ?.context_window ?? null);
   const pendingApproval =
     activeConvId != null ? pendingByConv[activeConvId] ?? null : null;
   // Conversation ids with a stream in flight (drives the sidebar indicator).
@@ -301,11 +312,18 @@ export function App() {
 
   const loadModels = useCallback(async (endpoint: string) => {
     try {
-      const m = await api.fetchModels(endpoint);
-      setModels(m);
-      return m;
+      const infos = await api.fetchModels(endpoint);
+      const ids = infos.map((m) => m.id);
+      const ctxMap: Record<string, number> = {};
+      for (const m of infos) {
+        if (m.context_window != null) ctxMap[m.id] = m.context_window;
+      }
+      setModels(ids);
+      setModelCtxWindows(ctxMap);
+      return ids;
     } catch (e) {
       setModels([]);
+      setModelCtxWindows({});
       setError(`Models: ${e}`);
       return [];
     }
@@ -758,22 +776,33 @@ export function App() {
             break;
           }
           case "request_metrics":
-            setMetrics((m) => ({
-              ...m,
-              decode: ev.decode_tok_s,
-              ttft: ev.ttft_ms,
-              prefill: ev.prefill_tok_s,
-              durationMs: ev.duration_ms,
-              peakDecode: Math.max(m.peakDecode, ev.decode_tok_s ?? 0),
-              peakTtft: Math.max(m.peakTtft, ev.ttft_ms ?? 0),
-              peakPrefill: Math.max(m.peakPrefill, ev.prefill_tok_s ?? 0),
-              throughputHistory: ev.decode_tok_s
-                ? [...m.throughputHistory, ev.decode_tok_s].slice(-60)
-                : m.throughputHistory,
-              ttftHistory: ev.ttft_ms
-                ? [...m.ttftHistory, ev.ttft_ms].slice(-60)
-                : m.ttftHistory,
-            }));
+            setMetrics((m) => {
+              const count = m.avgCount + 1;
+              const runAvg = (prev: number | null, cur: number | null | undefined) =>
+                cur == null ? prev :
+                prev == null ? cur :
+                (prev * m.avgCount + cur) / count;
+              return {
+                ...m,
+                decode: ev.decode_tok_s ?? m.decode,
+                ttft: ev.ttft_ms ?? m.ttft,
+                prefill: ev.prefill_tok_s ?? m.prefill,
+                durationMs: ev.duration_ms,
+                peakDecode: Math.max(m.peakDecode, ev.decode_tok_s ?? 0),
+                peakTtft: Math.max(m.peakTtft, ev.ttft_ms ?? 0),
+                peakPrefill: Math.max(m.peakPrefill, ev.prefill_tok_s ?? 0),
+                avgDecode: runAvg(m.avgDecode, ev.decode_tok_s),
+                avgTtft: runAvg(m.avgTtft, ev.ttft_ms),
+                avgPrefill: runAvg(m.avgPrefill, ev.prefill_tok_s),
+                avgCount: count,
+                throughputHistory: ev.decode_tok_s
+                  ? [...m.throughputHistory, ev.decode_tok_s].slice(-60)
+                  : m.throughputHistory,
+                ttftHistory: ev.ttft_ms
+                  ? [...m.ttftHistory, ev.ttft_ms].slice(-60)
+                  : m.ttftHistory,
+              };
+            });
             break;
           case "compacted":
             patchConv(session.convId, () => ({
@@ -785,6 +814,11 @@ export function App() {
             setError(ev.message);
             break;
           case "done":
+            // Clear the conv streaming flag immediately so the Stop/Queue
+            // buttons and topbar indicator go away as soon as the backend
+            // sends Done — without waiting for the Tauri command to return
+            // (which still has DB writes + finally-block work ahead of it).
+            setConvStreaming(session.convId, false);
             patchConvMessages(session.convId, (prev) => {
               const next = prev.slice();
               for (let i = next.length - 1; i >= 0; i--) {
@@ -848,13 +882,7 @@ export function App() {
     setError(null);
     clearPending(startId);
     setConvStreaming(startId, true);
-    setMetrics((m) => ({
-      ...m,
-      activeRequests: m.activeRequests + 1,
-      decode: null,
-      ttft: null,
-      prefill: null,
-    }));
+    setMetrics((m) => ({ ...m, activeRequests: m.activeRequests + 1 }));
     try {
       await starter((ev) => handleEvent(ev, session));
     } catch (e) {

@@ -11,6 +11,10 @@ export interface LiveMetrics {
   peakDecode: number;
   peakTtft: number;
   peakPrefill: number;
+  avgDecode: number | null;
+  avgTtft: number | null;
+  avgPrefill: number | null;
+  avgCount: number;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -135,7 +139,7 @@ export function StatusView({
             {fmt(decode)}
             <span className="unit">tok/s</span>
           </div>
-          <div className="sub">peak {fmt(m.peakDecode)}</div>
+          <div className="sub">avg {fmt(m.avgDecode)} · pk {fmt(m.peakDecode)}</div>
         </div>
         <div className="tile">
           <div className="label">TTFT</div>
@@ -143,7 +147,9 @@ export function StatusView({
             {ttft === null ? "—" : Math.round(ttft)}
             <span className="unit">ms</span>
           </div>
-          <div className="sub">peak {m.peakTtft ? Math.round(m.peakTtft) : "—"} ms</div>
+          <div className="sub">
+            avg {m.avgTtft != null ? Math.round(m.avgTtft) : "—"} · pk {m.peakTtft ? Math.round(m.peakTtft) : "—"} ms
+          </div>
         </div>
         <div className="tile">
           <div className="label">Prefill</div>
@@ -151,7 +157,7 @@ export function StatusView({
             {fmt(prefill)}
             <span className="unit">t/s</span>
           </div>
-          <div className="sub">peak {fmt(m.peakPrefill)}</div>
+          <div className="sub">avg {fmt(m.avgPrefill)} · pk {fmt(m.peakPrefill)}</div>
         </div>
         <div className="tile">
           <div className="label">Req</div>

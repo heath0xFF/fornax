@@ -21,7 +21,7 @@ export const api = {
   getConfig: () => invoke<Config>("get_config"),
   saveConfig: (config: Config) => invoke<void>("save_config", { config }),
   fetchModels: (endpoint: string) =>
-    invoke<string[]>("fetch_models", { endpoint }),
+    invoke<{ id: string; context_window: number | null }[]>("fetch_models", { endpoint }),
 
   listConversations: () => invoke<ConversationDto[]>("list_conversations"),
   loadConversation: (id: number) =>

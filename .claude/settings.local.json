@@ -28,7 +28,8 @@
       "Bash(touch /Applications/hChat.app)",
       "Read(//Applications/hChat.app/**)",
       "Bash(npx tsc *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(ssh spark *)"
     ]
   }
 }

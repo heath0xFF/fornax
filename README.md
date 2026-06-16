@@ -18,14 +18,16 @@ Electron app.
 ## Features
 
 - **Streaming chat** against any OpenAI-compatible endpoint, with per-conversation
-  model, system prompt, and sampling settings
+  model, system prompt, and sampling settings; a **context progress bar** shows
+  how much of the model's context window the current chat occupies (token count
+  and fill bar, turning amber at 80%)
 - **Multiple backends** at once — switch from the top bar; each conversation
   remembers its own. Arbitrary URLs/ports, per-endpoint API keys
-- **Live metrics dashboard** — decode/TTFT/prefill, requests, VRAM, power, temp,
-  KV-cache, and per-GPU rows, with throughput, TTFT, and GPU util/power charts.
-  Apple-Silicon GPU
-  stats via [macmon](https://github.com/vladkens/macmon) (no sudo); remote NVIDIA
-  boxes via the bundled **`fornax-agent`**; vLLM / llama.cpp / llama-swap via
+- **Live metrics dashboard** — decode/TTFT/prefill (last request + running
+  average + session peak), requests, VRAM, power, temp, KV-cache, and per-GPU
+  rows, with throughput, TTFT, and GPU util/power charts. Apple-Silicon GPU stats
+  via [macmon](https://github.com/vladkens/macmon) (no sudo); remote NVIDIA boxes
+  via the bundled **`fornax-agent`**; vLLM / llama.cpp / llama-swap via
   Prometheus. View it full-page, or **dock it beside the chat** to watch a backend
   while you work
 - **Usage history** — every turn's tokens, cost, TTFT, and tok/s are recorded
@@ -154,6 +156,19 @@ dropdown.
 
 If Fornax reaches an endpoint but reports "No models available", the server is up
 but no model is loaded/pulled.
+
+**Context window** — oMLX and OpenRouter report the context size per model in
+their `/v1/models` response (`max_model_len` / `context_length`); Fornax picks
+this up automatically and the context bar just works. llama-swap and plain
+llama.cpp do not expose this field, so set `context_window` manually on the
+endpoint:
+
+```toml
+[[saved_endpoints]]
+url = "http://spark:8080/v1"
+runtime = "llamaswap"
+context_window = 131072   # whatever --ctx-size you passed to llama-server
+```
 
 ## Metrics dashboard
 
