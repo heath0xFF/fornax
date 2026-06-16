@@ -1,0 +1,37 @@
+ok i've been working with some other models/agents to add some features. can you check them out and review them for accuracy/bugs?
+
+---
+
+ok i've been working with some other models/agents to add some features. can you check them out and review them for accuracy/bugs?
+
+---
+
+ok so i guess the thing i want to understand is why llama.cpp via llama-swap on my dgx spark (`ssh spark` for you) doesn't show the model context size? 
+
+really waht i'm after is for fornax chats (models served via oMLX, llama.cpp via llama-swap, and openrouter) to show, per chat, how much of the models context the _current chat_ is taking up.
+
+---
+
+i just want to know, per chat, the current context size and the model total context size, and i want a progress bar. do waht you need to do to make it work
+
+---
+
+why does context fall back to that?
+
+---
+
+ok that's fine. update the readme please
+
+---
+
+ok now i'd like to fix a couple things: 
+
+the queue button when the model is streaming a current request is offset in the chatbox -- the position needs to be fixed
+
+when i make a new request, the status sidebar info goes away -- it should persist the previous values at the least. what woudl it take to show averages as well? 
+
+for some models on deepthought (the dgx spark on my desk) the streaming response hangs for a bit before i it wraps up and i can continue the conversation without sending a queued message
+
+---
+
+okkk nice. are there updates that need to be made to the readme?

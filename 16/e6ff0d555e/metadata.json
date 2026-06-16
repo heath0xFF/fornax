@@ -3,10 +3,18 @@
   "checkpoint_id": "16e6ff0d555e",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 8,
   "files_touched": [
+    "CLAUDE.md",
+    "README.md",
+    "src-tauri/src/commands.rs",
+    "src-tauri/src/core/api.rs",
     "src/App.tsx",
+    "src/components/BenchView.tsx",
     "src/components/ChatView.tsx",
+    "src/components/ModelsView.tsx",
+    "src/components/StatusView.tsx",
+    "src/lib/tauri.ts",
     "src/styles.css"
   ],
   "sessions": [
@@ -15,13 +23,19 @@
       "transcript": "/16/e6ff0d555e/0/full.jsonl",
       "content_hash": "/16/e6ff0d555e/0/content_hash.txt",
       "prompt": "/16/e6ff0d555e/0/prompt.txt"
+    },
+    {
+      "metadata": "/16/e6ff0d555e/1/metadata.json",
+      "transcript": "/16/e6ff0d555e/1/full.jsonl",
+      "content_hash": "/16/e6ff0d555e/1/content_hash.txt",
+      "prompt": "/16/e6ff0d555e/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 581432,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 484480,
-    "output_tokens": 17895,
-    "api_call_count": 26
+    "input_tokens": 581541,
+    "cache_creation_tokens": 210447,
+    "cache_read_tokens": 6949558,
+    "output_tokens": 69110,
+    "api_call_count": 120
   }
 }
