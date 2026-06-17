@@ -1,0 +1,21 @@
+there is an issue with models using tools that are built in. they go to use the tool, and then just completely get yeeted out of the chat.
+
+---
+
+there is an issue with models using tools that are built in. they go to use the tool, and then just completely get yeeted out of the chat.
+
+---
+
+so what was the issue?
+
+---
+
+Why would it do that? Is that the right way to do this?
+
+---
+
+Why do we need those rolls, I guess?
+
+---
+
+It's specifically the run shell command that ends up getting stuck and then the model just dies on my DGX spark.
