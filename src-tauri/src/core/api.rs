@@ -1,4 +1,4 @@
-use crate::message::{Message, ToolCall, ToolCallFunction};
+use crate::message::{Message, Role, ToolCall, ToolCallFunction};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -57,7 +57,7 @@ pub struct ModelInfo {
 #[derive(Serialize)]
 struct ChatRequest {
     model: String,
-    messages: Vec<Message>,
+    messages: Vec<serde_json::Value>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
@@ -287,6 +287,57 @@ pub struct ChatParams {
     pub tools: Option<Vec<serde_json::Value>>,
 }
 
+/// Converts a `Message` to the JSON value sent on the wire.
+///
+/// Local LLM backends (llama.cpp, vLLM, llama-swap, oMLX) implement the
+/// OpenAI tool-calling spec and expect:
+/// - `role: "tool"` → `content` as a plain string, not a content-parts array
+/// - `role: "assistant"` with tool_calls and no text → `content` omitted
+///
+/// Using `Message`'s derived `Serialize` always emits `content` as an array,
+/// which breaks those backends on the second (post-tool-result) turn.
+fn message_to_api_value(m: &Message) -> serde_json::Value {
+    use serde_json::{Map, Value};
+    let role = match m.role {
+        Role::System => "system",
+        Role::User => "user",
+        Role::Assistant => "assistant",
+        Role::Tool => "tool",
+    };
+    let mut obj = Map::new();
+    obj.insert("role".into(), Value::String(role.to_string()));
+    match m.role {
+        Role::Tool => {
+            obj.insert("content".into(), Value::String(m.text_str()));
+        }
+        Role::Assistant
+            if m.tool_calls.as_ref().map_or(false, |tc| !tc.is_empty())
+                && m.is_empty_content() =>
+        {
+            // Omit content for pure tool-call turns to avoid sending an empty
+            // array that many backends reject.
+        }
+        _ => {
+            obj.insert(
+                "content".into(),
+                serde_json::to_value(&m.content).unwrap_or(Value::Null),
+            );
+        }
+    }
+    if let Some(tool_calls) = &m.tool_calls {
+        if !tool_calls.is_empty() {
+            obj.insert(
+                "tool_calls".into(),
+                serde_json::to_value(tool_calls).unwrap_or(Value::Null),
+            );
+        }
+    }
+    if let Some(tc_id) = &m.tool_call_id {
+        obj.insert("tool_call_id".into(), Value::String(tc_id.clone()));
+    }
+    Value::Object(obj)
+}
+
 pub fn stream_chat(
     params: ChatParams,
     tx: mpsc::UnboundedSender<StreamEvent>,
@@ -326,9 +377,11 @@ pub fn stream_chat(
 
         let url = format!("{}/chat/completions", base_url);
 
+        let wire_messages: Vec<serde_json::Value> =
+            messages.iter().map(message_to_api_value).collect();
         let req = ChatRequest {
             model,
-            messages,
+            messages: wire_messages,
             stream: true,
             temperature,
             max_tokens,

@@ -189,50 +189,15 @@ pub fn run_shell_tool(
         .iter()
         .map(|piece| substitute_placeholders(piece, args))
         .collect();
-    let mut cmd = Command::new(&resolved[0]);
-    cmd.args(&resolved[1..])
+    let child = Command::new(&resolved[0])
+        .args(&resolved[1..])
         .current_dir(working_dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
-    let deadline =
-        std::time::Instant::now() + std::time::Duration::from_secs(limits::SHELL_TIMEOUT_SECS);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if std::time::Instant::now() >= deadline {
-                    let _ = child.kill();
-                    return Err(format!("timed out after {}s", limits::SHELL_TIMEOUT_SECS));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-            Err(e) => return Err(format!("wait failed: {e}")),
-        }
-    }
-    let out = child
-        .wait_with_output()
-        .map_err(|e| format!("collect failed: {e}"))?;
-    let mut combined = String::new();
-    if !out.stdout.is_empty() {
-        combined.push_str("--- stdout ---\n");
-        combined.push_str(&String::from_utf8_lossy(&out.stdout));
-        if !combined.ends_with('\n') {
-            combined.push('\n');
-        }
-    }
-    if !out.stderr.is_empty() {
-        combined.push_str("--- stderr ---\n");
-        combined.push_str(&String::from_utf8_lossy(&out.stderr));
-        if !combined.ends_with('\n') {
-            combined.push('\n');
-        }
-    }
-    combined.push_str(&format!(
-        "--- exit: {} ---",
-        out.status.code().unwrap_or(-1)
-    ));
-    Ok(truncate_with_marker(&combined, limits::SHELL_OUTPUT_MAX_BYTES))
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    let (stdout, stderr, exit) = collect_child_output(child)?;
+    Ok(format_shell_output(&stdout, &stderr, exit, limits::SHELL_OUTPUT_MAX_BYTES))
 }
 
 /// Replace `{{name}}` occurrences in `s` with the string value of the
@@ -443,7 +408,7 @@ fn builtin_write_file(args: &serde_json::Value, wd: &Path) -> Result<String, Str
 fn builtin_run_shell(args: &serde_json::Value, wd: &Path) -> Result<String, String> {
     let command = arg_str(args, "command")?;
     use std::process::{Command, Stdio};
-    let mut child = Command::new("sh")
+    let child = Command::new("sh")
         .arg("-c")
         .arg(command)
         .current_dir(wd)
@@ -451,32 +416,67 @@ fn builtin_run_shell(args: &serde_json::Value, wd: &Path) -> Result<String, Stri
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("spawn failed: {e}"))?;
+    let (stdout, stderr, exit) = collect_child_output(child)?;
+    Ok(format_shell_output(&stdout, &stderr, exit, limits::SHELL_OUTPUT_MAX_BYTES))
+}
 
-    // Wait with a timeout so a runaway command can't hang the app forever.
+/// Drains stdout and stderr in background threads while polling for exit,
+/// avoiding the pipe-buffer deadlock that occurs when a command produces more
+/// than ~64 KB of output and the parent isn't reading from the pipes.
+fn collect_child_output(
+    mut child: std::process::Child,
+) -> Result<(Vec<u8>, Vec<u8>, i32), String> {
+    use std::io::Read;
+
+    let stdout_thread = child.stdout.take().map(|mut s| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            s.read_to_end(&mut buf).map(|_| buf)
+        })
+    });
+    let stderr_thread = child.stderr.take().map(|mut s| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            s.read_to_end(&mut buf).map(|_| buf)
+        })
+    });
+
     let deadline =
         std::time::Instant::now() + std::time::Duration::from_secs(limits::SHELL_TIMEOUT_SECS);
-    loop {
+    let exit_code = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status.code().unwrap_or(-1),
             Ok(None) => {
                 if std::time::Instant::now() >= deadline {
                     let _ = child.kill();
-                    return Err(format!(
-                        "timed out after {}s",
-                        limits::SHELL_TIMEOUT_SECS
-                    ));
+                    let _ = stdout_thread.map(|h| h.join());
+                    let _ = stderr_thread.map(|h| h.join());
+                    return Err(format!("timed out after {}s", limits::SHELL_TIMEOUT_SECS));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             Err(e) => return Err(format!("wait failed: {e}")),
         }
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("collect failed: {e}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let exit = output.status.code().unwrap_or(-1);
+    };
+
+    let join = |h: Option<std::thread::JoinHandle<std::io::Result<Vec<u8>>>>| -> Result<Vec<u8>, String> {
+        h.map(|t| {
+            t.join()
+                .map_err(|_| "reader thread panicked".to_string())
+                .and_then(|r| r.map_err(|e| format!("read failed: {e}")))
+        })
+        .transpose()
+        .map(|v| v.unwrap_or_default())
+    };
+
+    let stdout = join(stdout_thread)?;
+    let stderr = join(stderr_thread)?;
+    Ok((stdout, stderr, exit_code))
+}
+
+fn format_shell_output(stdout: &[u8], stderr: &[u8], exit: i32, max_bytes: usize) -> String {
+    let stdout = String::from_utf8_lossy(stdout);
+    let stderr = String::from_utf8_lossy(stderr);
     let mut combined = String::new();
     if !stdout.is_empty() {
         combined.push_str("--- stdout ---\n");
@@ -493,7 +493,7 @@ fn builtin_run_shell(args: &serde_json::Value, wd: &Path) -> Result<String, Stri
         }
     }
     combined.push_str(&format!("--- exit: {exit} ---"));
-    Ok(truncate_with_marker(&combined, limits::SHELL_OUTPUT_MAX_BYTES))
+    truncate_with_marker(&combined, max_bytes)
 }
 
 /// Truncate a string to `max_bytes` and append a marker so the model knows
