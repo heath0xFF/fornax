@@ -5,6 +5,31 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
+/// Per-conversation settings snapshot. All fields are `Option` because a
+/// conversation may have been created before any setting was customized
+/// (column NULL → use the global default).
+#[derive(Clone, Debug, Default)]
+pub struct ConversationSettings {
+    pub model: Option<String>,
+    pub system_prompt: Option<String>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub use_max_tokens: bool,
+    pub top_p: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+    pub presence_penalty: Option<f32>,
+    pub stop_sequences: Vec<String>,
+    pub endpoint: Option<String>,
+    /// Working directory for tool calls in this conversation. `None` falls
+    /// back to `~`. Set per-conversation via the settings panel.
+    pub working_dir: Option<String>,
+    /// Per-conversation auto-compaction overrides. `None` falls back to the
+    /// global `Config` value.
+    pub auto_compact: Option<bool>,
+    pub compact_threshold_pct: Option<f32>,
+    pub compact_keep_recent: Option<u32>,
+}
+
 #[cfg(unix)]
 fn set_dir_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;

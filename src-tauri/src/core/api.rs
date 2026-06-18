@@ -311,7 +311,7 @@ fn message_to_api_value(m: &Message) -> serde_json::Value {
             obj.insert("content".into(), Value::String(m.text_str()));
         }
         Role::Assistant
-            if m.tool_calls.as_ref().map_or(false, |tc| !tc.is_empty())
+            if m.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty())
                 && m.is_empty_content() =>
         {
             // Omit content for pure tool-call turns to avoid sending an empty

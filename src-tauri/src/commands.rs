@@ -7,7 +7,7 @@ use crate::api::{self, ChatParams, StreamEvent};
 use crate::config::Config;
 use crate::message::{ContentPart, ImageUrl, Message, Role, ToolCall};
 use crate::state::AppState;
-use crate::storage::ConversationSettings;
+use crate::config::ConversationSettings;
 use crate::tools::{self, Handler, Safety, ToolDef};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -396,7 +396,7 @@ fn runtime_code(r: crate::config::Runtime) -> &'static str {
 
 #[tauri::command]
 pub fn list_conversations(state: State<'_, AppState>) -> Vec<ConversationDto> {
-    let convs = state.storage.lock().unwrap().list_conversations();
+    let convs = state.conversation_storage.lock().unwrap().list_conversations();
     let cfg = state.config.lock().unwrap();
     convs
         .into_iter()
@@ -423,9 +423,9 @@ pub fn list_conversations(state: State<'_, AppState>) -> Vec<ConversationDto> {
 pub fn usage_stats(state: State<'_, AppState>) -> UsageStatsDto {
     let retention = state.config.lock().unwrap().usage_retention_days;
     let s = {
-        let storage = state.storage.lock().unwrap();
-        storage.prune_usage(retention);
-        storage.usage_stats()
+        let usage = state.usage_storage.lock().unwrap();
+        usage.prune_usage(retention);
+        usage.usage_stats()
     };
     UsageStatsDto {
         total_requests: s.total_requests,
@@ -466,7 +466,7 @@ pub fn usage_stats(state: State<'_, AppState>) -> UsageStatsDto {
 
 #[tauri::command]
 pub fn clear_usage(state: State<'_, AppState>) {
-    state.storage.lock().unwrap().clear_usage();
+    state.usage_storage.lock().unwrap().clear_usage();
 }
 
 // ---------- benchmark ----------
@@ -647,7 +647,7 @@ pub async fn run_benchmark(
 #[tauri::command]
 pub fn list_projects(state: State<'_, AppState>) -> Vec<ProjectDto> {
     state
-        .storage
+        .project_storage
         .lock()
         .unwrap()
         .list_projects()
@@ -662,22 +662,22 @@ pub fn list_projects(state: State<'_, AppState>) -> Vec<ProjectDto> {
 
 #[tauri::command]
 pub fn create_project(state: State<'_, AppState>, name: String) -> Result<i64, String> {
-    state.storage.lock().unwrap().create_project(&name)
+    state.project_storage.lock().unwrap().create_project(&name)
 }
 
 #[tauri::command]
 pub fn rename_project(state: State<'_, AppState>, id: i64, name: String) {
-    state.storage.lock().unwrap().rename_project(id, &name);
+    state.project_storage.lock().unwrap().rename_project(id, &name);
 }
 
 #[tauri::command]
 pub fn delete_project(state: State<'_, AppState>, id: i64) {
-    state.storage.lock().unwrap().delete_project(id);
+    state.project_storage.lock().unwrap().delete_project(id);
 }
 
 #[tauri::command]
 pub fn set_project_pinned(state: State<'_, AppState>, id: i64, pinned: bool) {
-    state.storage.lock().unwrap().set_project_pinned(id, pinned);
+    state.project_storage.lock().unwrap().set_project_pinned(id, pinned);
 }
 
 #[tauri::command]
@@ -687,7 +687,7 @@ pub fn set_conversation_project(
     project_id: Option<i64>,
 ) {
     state
-        .storage
+        .project_storage
         .lock()
         .unwrap()
         .set_conversation_project(conversation_id, project_id);
@@ -695,16 +695,16 @@ pub fn set_conversation_project(
 
 #[tauri::command]
 pub fn load_conversation(state: State<'_, AppState>, id: i64) -> ConversationData {
-    let storage = state.storage.lock().unwrap();
+    let conv = state.conversation_storage.lock().unwrap();
     let cfg = state.config.lock().unwrap();
-    let messages = storage
+    let messages = conv
         .load_messages(id)
         .iter()
         .map(message_to_dto)
         .collect();
-    let settings = effective_settings(&cfg, &storage.load_conversation_settings(id));
-    let draft = storage.load_draft(id).filter(|d| !d.is_empty());
-    let (summary, summary_through) = storage.load_compaction(id);
+    let settings = effective_settings(&cfg, &conv.load_conversation_settings(id));
+    let draft = conv.load_draft(id).filter(|d| !d.is_empty());
+    let (summary, summary_through) = conv.load_compaction(id);
     ConversationData {
         messages,
         settings,
@@ -716,7 +716,7 @@ pub fn load_conversation(state: State<'_, AppState>, id: i64) -> ConversationDat
 
 #[tauri::command]
 pub fn save_draft(state: State<'_, AppState>, id: i64, text: String) {
-    state.storage.lock().unwrap().save_draft(id, &text);
+    state.conversation_storage.lock().unwrap().save_draft(id, &text);
 }
 
 // ---------- ~/.agents (commands + skills) ----------
@@ -759,26 +759,26 @@ pub async fn reconnect_mcp(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn delete_conversation(state: State<'_, AppState>, id: i64) {
-    state.storage.lock().unwrap().delete_conversation(id);
+    state.conversation_storage.lock().unwrap().delete_conversation(id);
 }
 
 #[tauri::command]
 pub fn delete_all_conversations(state: State<'_, AppState>) -> Result<(), String> {
-    state.storage.lock().unwrap().delete_all_conversations()
+    state.conversation_storage.lock().unwrap().delete_all_conversations()
 }
 
 #[tauri::command]
 pub fn rename_conversation(state: State<'_, AppState>, id: i64, title: String) {
-    let storage = state.storage.lock().unwrap();
-    storage.update_conversation_title(id, &title);
+    let conv = state.conversation_storage.lock().unwrap();
+    conv.update_conversation_title(id, &title);
     // A manual rename is intentional — mark it so the one-shot AI auto-titler
     // won't overwrite the user's chosen name on the next turn.
-    storage.mark_auto_titled(id);
+    conv.mark_auto_titled(id);
 }
 
 #[tauri::command]
 pub fn set_pinned(state: State<'_, AppState>, id: i64, pinned: bool) {
-    state.storage.lock().unwrap().set_pinned(id, pinned);
+    state.conversation_storage.lock().unwrap().set_pinned(id, pinned);
 }
 
 #[tauri::command]
@@ -786,19 +786,19 @@ pub fn search_conversations(
     state: State<'_, AppState>,
     query: String,
 ) -> Vec<(i64, String, String)> {
-    state.storage.lock().unwrap().search(&query)
+    state.conversation_storage.lock().unwrap().search(&query)
 }
 
 #[tauri::command]
 pub fn export_conversation(state: State<'_, AppState>, id: i64) -> String {
-    state.storage.lock().unwrap().export_markdown(id)
+    state.conversation_storage.lock().unwrap().export_markdown(id)
 }
 
 /// Write a conversation's markdown to the user's download dir; returns the path.
 #[tauri::command]
 pub fn export_conversation_file(state: State<'_, AppState>, id: i64) -> Result<String, String> {
     let (markdown, title) = {
-        let s = state.storage.lock().unwrap();
+        let s = state.conversation_storage.lock().unwrap();
         let md = s.export_markdown(id);
         let title = s
             .list_conversations()
@@ -847,7 +847,7 @@ pub struct PresetDto {
 #[tauri::command]
 pub fn list_presets(state: State<'_, AppState>) -> Vec<PresetDto> {
     state
-        .storage
+        .preset_storage
         .lock()
         .unwrap()
         .list_presets()
@@ -879,12 +879,12 @@ pub fn create_preset(
     gp: GenParams,
 ) -> Result<i64, String> {
     let cs = settings_from_gen(&gp, None);
-    state.storage.lock().unwrap().create_preset(&name, &cs)
+    state.preset_storage.lock().unwrap().create_preset(&name, &cs)
 }
 
 #[tauri::command]
 pub fn delete_preset(state: State<'_, AppState>, id: i64) {
-    state.storage.lock().unwrap().delete_preset(id);
+    state.preset_storage.lock().unwrap().delete_preset(id);
 }
 
 // ---------- metrics ----------
@@ -1037,12 +1037,12 @@ pub async fn send_message(
     on_event: Channel<ChatEvent>,
 ) -> Result<i64, String> {
     let (conversation_id, messages, api_key, working_dir, first_branch) = {
-        let storage = state.storage.lock().unwrap();
+        let conv = state.conversation_storage.lock().unwrap();
         let conversation_id = match params.conversation_id {
             Some(id) => id,
-            None => storage.create_conversation("untitled chat")?,
+            None => conv.create_conversation("untitled chat")?,
         };
-        let mut messages = storage.load_messages(conversation_id);
+        let mut messages = conv.load_messages(conversation_id);
         let mut parts = vec![ContentPart::Text {
             text: params.user_text.clone(),
         }];
@@ -1056,15 +1056,15 @@ pub async fn send_message(
         }
         messages.push(Message::from_parts(Role::User, parts));
 
-        let prior_wd = storage.load_conversation_settings(conversation_id).working_dir;
-        storage.save_messages(conversation_id, &mut messages)?;
-        storage.save_conversation_settings(
+        let prior_wd = conv.load_conversation_settings(conversation_id).working_dir;
+        conv.save_messages(conversation_id, &mut messages)?;
+        conv.save_conversation_settings(
             conversation_id,
             &settings_from_gen(&params.gp, prior_wd.clone()),
         );
 
         let parent = messages.last().and_then(|m| m.id);
-        let first_branch = storage.next_branch_index(conversation_id, parent);
+        let first_branch = conv.next_branch_index(conversation_id, parent);
         (
             conversation_id,
             messages,
@@ -1102,16 +1102,16 @@ pub async fn regenerate(
 ) -> Result<i64, String> {
     let conversation_id = params.conversation_id;
     let (messages, api_key, working_dir, first_branch) = {
-        let storage = state.storage.lock().unwrap();
-        let full = storage.load_messages(conversation_id);
+        let conv = state.conversation_storage.lock().unwrap();
+        let full = conv.load_messages(conversation_id);
         let Some(idx) = full.iter().rposition(|m| m.role == Role::User) else {
             return Err("Nothing to regenerate".into());
         };
         let messages: Vec<Message> = full[..=idx].to_vec();
         let parent = messages.last().and_then(|m| m.id);
-        let first_branch = storage.next_branch_index(conversation_id, parent);
-        let prior_wd = storage.load_conversation_settings(conversation_id).working_dir;
-        storage.save_conversation_settings(
+        let first_branch = conv.next_branch_index(conversation_id, parent);
+        let prior_wd = conv.load_conversation_settings(conversation_id).working_dir;
+        conv.save_conversation_settings(
             conversation_id,
             &settings_from_gen(&params.gp, prior_wd.clone()),
         );
@@ -1147,14 +1147,14 @@ pub async fn edit_message(
 ) -> Result<i64, String> {
     let conversation_id = params.conversation_id;
     let (messages, api_key, working_dir) = {
-        let storage = state.storage.lock().unwrap();
-        let full = storage.load_messages(conversation_id);
+        let conv = state.conversation_storage.lock().unwrap();
+        let full = conv.load_messages(conversation_id);
         let Some(idx) = full.iter().position(|m| m.id == Some(params.message_id)) else {
             return Err("Message not found".into());
         };
         let original = &full[idx];
         let parent = original.parent_id;
-        let branch = storage.next_branch_index(conversation_id, parent);
+        let branch = conv.next_branch_index(conversation_id, parent);
 
         let mut messages: Vec<Message> = full[..idx].to_vec();
         let mut edited = Message::text(original.role.clone(), params.new_text.clone());
@@ -1162,12 +1162,12 @@ pub async fn edit_message(
         edited.branch_index = branch;
         messages.push(edited);
 
-        let prior_wd = storage.load_conversation_settings(conversation_id).working_dir;
-        storage.save_conversation_settings(
+        let prior_wd = conv.load_conversation_settings(conversation_id).working_dir;
+        conv.save_conversation_settings(
             conversation_id,
             &settings_from_gen(&params.gp, prior_wd.clone()),
         );
-        storage.save_messages(conversation_id, &mut messages)?;
+        conv.save_messages(conversation_id, &mut messages)?;
         (
             messages,
             state.api_key_for(&params.gp.endpoint),
@@ -1238,8 +1238,8 @@ async fn run_turn(
     // ---- Auto-compaction (runs once, before the turn) ----
     // Load any persisted summary + the endpoint's context window / custom prompt.
     let (mut summary, mut summary_through) = {
-        let storage = state.storage.lock().unwrap();
-        storage.load_compaction(conversation_id)
+        let conv = state.conversation_storage.lock().unwrap();
+        conv.load_compaction(conversation_id)
     };
     let (context_window, compact_prompt) = {
         let cfg = state.config.lock().unwrap();
@@ -1298,8 +1298,8 @@ async fn run_turn(
                         .filter(|_| !cancel.is_cancelled())
                         {
                             {
-                                let storage = state.storage.lock().unwrap();
-                                storage.save_compaction(
+                                let conv = state.conversation_storage.lock().unwrap();
+                                conv.save_compaction(
                                     conversation_id,
                                     &new_summary,
                                     boundary_id,
@@ -1355,8 +1355,8 @@ async fn run_turn(
         // continuations each get their own row; failed turns count as !ok so
         // the success rate is meaningful).
         {
-            let storage = state.storage.lock().unwrap();
-            storage.record_usage(&crate::storage::UsageRecord {
+            let usage = state.usage_storage.lock().unwrap();
+            usage.record_usage(&crate::usage_storage::UsageRecord {
                 endpoint: &gp.endpoint,
                 model: &gp.model,
                 prompt_tokens: outcome.prompt_tokens,
@@ -1383,8 +1383,8 @@ async fn run_turn(
         }
         messages.push(assistant);
         if let Err(e) = {
-            let storage = state.storage.lock().unwrap();
-            storage.save_messages(conversation_id, &mut messages)
+            let conv = state.conversation_storage.lock().unwrap();
+            conv.save_messages(conversation_id, &mut messages)
         } {
             on_event.send(ChatEvent::Error { message: e }).ok();
             errored = true;
@@ -1494,8 +1494,8 @@ async fn run_turn(
             messages.push(Message::tool_result(call.id.clone(), result));
         }
         if let Err(e) = {
-            let storage = state.storage.lock().unwrap();
-            storage.save_messages(conversation_id, &mut messages)
+            let conv = state.conversation_storage.lock().unwrap();
+            conv.save_messages(conversation_id, &mut messages)
         } {
             on_event.send(ChatEvent::Error { message: e }).ok();
             errored = true;
@@ -1518,7 +1518,7 @@ pub struct SiblingInfo {
 #[tauri::command]
 pub fn message_siblings(state: State<'_, AppState>, message_id: i64) -> SiblingInfo {
     let ids: Vec<i64> = state
-        .storage
+        .conversation_storage
         .lock()
         .unwrap()
         .siblings_of(message_id)
@@ -1539,7 +1539,7 @@ pub fn message_siblings(state: State<'_, AppState>, message_id: i64) -> SiblingI
 #[tauri::command]
 pub fn walk_from(state: State<'_, AppState>, start_id: i64) -> Vec<MessageDto> {
     state
-        .storage
+        .conversation_storage
         .lock()
         .unwrap()
         .walk_from(start_id)
@@ -1877,8 +1877,8 @@ async fn maybe_auto_title(
     user_text: &str,
 ) {
     let needs = {
-        let storage = state.storage.lock().unwrap();
-        storage.needs_auto_title(conversation_id)
+        let conv = state.conversation_storage.lock().unwrap();
+        conv.needs_auto_title(conversation_id)
     };
     if !needs {
         return;
@@ -1908,9 +1908,9 @@ async fn maybe_auto_title(
         let clean = crate::markdown::strip_reasoning(&raw);
         let clean = clean.trim().trim_matches('"').trim();
         if !clean.is_empty() {
-            let storage = state.storage.lock().unwrap();
-            storage.update_conversation_title(conversation_id, clean);
-            storage.mark_auto_titled(conversation_id);
+            let conv = state.conversation_storage.lock().unwrap();
+            conv.update_conversation_title(conversation_id, clean);
+            conv.mark_auto_titled(conversation_id);
         }
     }
 }
