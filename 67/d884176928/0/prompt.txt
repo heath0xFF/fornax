@@ -1,0 +1,13 @@
+I'd like for you to review this codebase and tell me what you can learn about it. what is it?
+
+---
+
+/skill:ponytail-audit
+
+---
+
+i'd like for you to make a new branch, write this report to a markdown file, and then start work on the critical items.
+
+---
+
+continue

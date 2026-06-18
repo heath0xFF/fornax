@@ -1,0 +1,80 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "67d884176928",
+  "session_id": "019eda5c-4d74-7eec-a081-18c142fa8300",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-18T18:51:32.816186Z",
+  "branch": "ponytail-refactor",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "PONYTAIL_REFACTORING_REPORT.md",
+    "src-tauri/src/commands.rs",
+    "src-tauri/src/lib.rs"
+  ],
+  "agent": "Pi",
+  "model": "north-mini-code",
+  "turn_id": "94de5ff5bb84",
+  "token_usage": {
+    "input_tokens": 206444,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 29553718,
+    "output_tokens": 203438,
+    "api_call_count": 280
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "pi-skill-ponytail-audit-2026-06-18T11:09:56.122Z-0",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "ponytail-audit"
+      },
+      "source": {
+        "agent": "pi",
+        "signal": "input_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "ee2b3006fcda",
+      "timestamp": "2026-06-18T11:09:56.122Z",
+      "native": {
+        "command": "/skill:ponytail-audit"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/skill:ponytail-audit",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-18T18:51:32.795285Z",
+    "agent_lines": 297,
+    "agent_removed": 69,
+    "human_added": 2229,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2526,
+    "total_lines_changed": 4690,
+    "agent_percentage": 7.803837953091684,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1343,
+      "agent_lines_removed": 37
+    }
+  ]
+}
