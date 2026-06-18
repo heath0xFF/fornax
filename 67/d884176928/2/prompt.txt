@@ -1,17 +1,1 @@
-read PONYTAIL_REFACTORING_REPORT.md, take inventory of current changes, and then continue working based on what's been done.
-
----
-
-shit sorry. continue
-
----
-
-why'd you remove the ponytail report? restore that please
-
----
-
-OK. did you run build tests? does it compile?
-
----
-
-ok now i'd like for you to double cheeck test coverage. are the tests we have applicable? do they need to be improved?
+ok use the gh cli to make a PR onto main with a neat description of what you've done
