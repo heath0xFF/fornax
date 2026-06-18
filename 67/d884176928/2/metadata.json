@@ -1,0 +1,124 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "67d884176928",
+  "session_id": "019edb39-d8ff-739e-907a-8085a2307735",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-18T18:51:33.387805Z",
+  "branch": "ponytail-refactor",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "PONYTAIL_REFACTORING_REPORT.md",
+    "src-tauri/src/commands.rs",
+    "src-tauri/src/core/api.rs",
+    "src-tauri/src/core/config.rs",
+    "src-tauri/src/core/conversation_storage.rs",
+    "src-tauri/src/core/preset_storage.rs",
+    "src-tauri/src/core/project_storage.rs",
+    "src-tauri/src/core/storage.rs",
+    "src-tauri/src/core/usage_storage.rs",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/state.rs"
+  ],
+  "agent": "Pi",
+  "model": "qwen3.6-27b",
+  "turn_id": "903a04005481",
+  "token_usage": {
+    "input_tokens": 260283,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 11413646,
+    "output_tokens": 44284,
+    "api_call_count": 205
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-18T18:51:33.37718Z",
+    "agent_lines": 678,
+    "agent_removed": 2118,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 46,
+    "total_committed": 678,
+    "total_lines_changed": 2842,
+    "agent_percentage": 98.3814215341309,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 4277,
+      "user_lines_removed": 46,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "PONYTAIL_REFACTORING_REPORT.md": 221,
+        "src-tauri/src/commands/chat_commands.rs": 448,
+        "src-tauri/src/commands/config_commands.rs": 33,
+        "src-tauri/src/commands/mcp_commands.rs": 27,
+        "src-tauri/src/commands/mod.rs": 6,
+        "src-tauri/src/commands/project_commands.rs": 71,
+        "src-tauri/src/commands/system_commands.rs": 140,
+        "src-tauri/src/commands/usage_commands.rs": 132,
+        "src-tauri/src/commands_new.rs": 575,
+        "src-tauri/src/core/agent_storage.rs": 54,
+        "src-tauri/src/core/config.rs": 25,
+        "src-tauri/src/core/conversation_storage.rs": 905,
+        "src-tauri/src/core/preset_storage.rs": 115,
+        "src-tauri/src/core/project_storage.rs": 95,
+        "src-tauri/src/core/usage_storage.rs": 217,
+        "src-tauri/src/helpers/chat.rs": 524,
+        "src-tauri/src/helpers/config.rs": 40,
+        "src-tauri/src/helpers/mcp.rs": 34,
+        "src-tauri/src/helpers/mod.rs": 18,
+        "src-tauri/src/helpers/project.rs": 52,
+        "src-tauri/src/helpers/simple.rs": 67,
+        "src-tauri/src/helpers/system.rs": 84,
+        "src-tauri/src/helpers/usage.rs": 31,
+        "src-tauri/src/lib.rs": 65,
+        "src-tauri/src/lib_backup.rs": 137,
+        "src-tauri/src/lib_old.rs": 139,
+        "src-tauri/src/state.rs": 22
+      },
+      "user_removed_per_file": {
+        "src-tauri/src/lib.rs": 40,
+        "src-tauri/src/state.rs": 6
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4277,
+      "agent_lines_removed": 46
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1622,
+      "agent_lines_removed": 2164
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1843,
+      "agent_lines_removed": 2164
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1843,
+      "agent_lines_removed": 2164
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2526,
+      "agent_lines_removed": 2164
+    }
+  ]
+}
