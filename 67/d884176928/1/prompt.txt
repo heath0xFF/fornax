@@ -1,0 +1,5 @@
+i need you to read PONYTAIL_REFACTORING_REPORT.md and then start going through each issue. once you've completed the issue, stage a commit with a message and let me know so i can review the diff.
+
+---
+
+you got stuck in a loop. take inventory of what's been done and then tell me what you've changed and what errors you're getting
