@@ -1,0 +1,38 @@
+<!-- Fornax constellation mark — standalone, dark background -->
+<!-- Use at any size; optimized for 32px–256px -->
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background (transparent variant: remove this rect) -->
+  <rect width="120" height="120" fill="#1e1e2e" rx="24"/>
+
+  <!-- Field stars -->
+  <g fill="#45475a">
+    <circle cx="16"  cy="20"  r="0.9"/>
+    <circle cx="100" cy="14"  r="0.7"/>
+    <circle cx="108" cy="82"  r="0.9"/>
+    <circle cx="18"  cy="98"  r="0.7"/>
+    <circle cx="90"  cy="104" r="0.8"/>
+    <circle cx="10"  cy="60"  r="0.6"/>
+  </g>
+
+  <!-- Constellation lines -->
+  <line x1="34" y1="32" x2="84" y2="54"
+    stroke="#fab387" stroke-width="0.9" stroke-linecap="round" opacity="0.4"/>
+  <line x1="84" y1="54" x2="54" y2="82"
+    stroke="#fab387" stroke-width="0.9" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- ν Fornacis -->
+  <circle cx="34" cy="32" r="5"   fill="#fab387" opacity="0.12"/>
+  <circle cx="34" cy="32" r="2.5" fill="#fab387" opacity="0.5"/>
+  <circle cx="34" cy="32" r="1.5" fill="#fab387"/>
+
+  <!-- β Fornacis -->
+  <circle cx="54" cy="82" r="6"   fill="#fab387" opacity="0.12"/>
+  <circle cx="54" cy="82" r="3"   fill="#fab387" opacity="0.5"/>
+  <circle cx="54" cy="82" r="1.8" fill="#fab387"/>
+
+  <!-- α Fornacis (brightest) -->
+  <circle cx="84" cy="54" r="10"  fill="#fab387" opacity="0.09"/>
+  <circle cx="84" cy="54" r="6"   fill="#fab387" opacity="0.22"/>
+  <circle cx="84" cy="54" r="3.5" fill="#fab387"/>
+  <circle cx="84" cy="54" r="1.5" fill="#fff6ed"/>
+</svg>

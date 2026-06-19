@@ -1,0 +1,55 @@
+<!-- Fornax wordmark — mark + logotype, dark background -->
+<!-- viewBox: 560 × 96. For light bg swap fill colors. -->
+<svg viewBox="0 0 560 96" xmlns="http://www.w3.org/2000/svg">
+  <rect width="560" height="96" fill="#1e1e2e"/>
+
+  <!-- Constellation mark, scaled to 64×64, centered at y=16..80 -->
+  <!-- ν at (22,20), α at (56,36), β at (36,56) — 64px grid -->
+
+  <!-- Field stars (mark area) -->
+  <g fill="#45475a">
+    <circle cx="10"  cy="13" r="0.7"/>
+    <circle cx="66"  cy="8"  r="0.5"/>
+    <circle cx="70"  cy="54" r="0.7"/>
+    <circle cx="8"   cy="66" r="0.5"/>
+    <circle cx="58"  cy="70" r="0.6"/>
+  </g>
+
+  <!-- Lines -->
+  <line x1="22" y1="20" x2="56" y2="36"
+    stroke="#fab387" stroke-width="0.9" stroke-linecap="round" opacity="0.4"/>
+  <line x1="56" y1="36" x2="36" y2="56"
+    stroke="#fab387" stroke-width="0.9" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- ν -->
+  <circle cx="22" cy="20" r="4"   fill="#fab387" opacity="0.12"/>
+  <circle cx="22" cy="20" r="2"   fill="#fab387" opacity="0.5"/>
+  <circle cx="22" cy="20" r="1.2" fill="#fab387"/>
+
+  <!-- β -->
+  <circle cx="36" cy="56" r="5"   fill="#fab387" opacity="0.12"/>
+  <circle cx="36" cy="56" r="2.5" fill="#fab387" opacity="0.5"/>
+  <circle cx="36" cy="56" r="1.5" fill="#fab387"/>
+
+  <!-- α (brightest) -->
+  <circle cx="56" cy="36" r="8"   fill="#fab387" opacity="0.09"/>
+  <circle cx="56" cy="36" r="4.5" fill="#fab387" opacity="0.22"/>
+  <circle cx="56" cy="36" r="2.5" fill="#fab387"/>
+  <circle cx="56" cy="36" r="1"   fill="#fff6ed"/>
+
+  <!-- Logotype: FORNAX -->
+  <!-- Rendered in monospace. Convert to paths in production if embedding in other tools. -->
+  <text
+    x="96"
+    y="62"
+    font-family="'JetBrains Mono', 'SF Mono', 'Courier New', monospace"
+    font-weight="600"
+    font-size="48"
+    letter-spacing="0.08em"
+    fill="#cdd6f4"
+  >FORNAX</text>
+
+  <!-- Hairline rule between mark and logotype -->
+  <line x1="80" y1="20" x2="80" y2="76"
+    stroke="#313244" stroke-width="1"/>
+</svg>
