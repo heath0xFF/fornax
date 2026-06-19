@@ -1,0 +1,26 @@
+what would be the lift required to turn fornax into a iOS app?
+
+---
+
+yeah i don't necessarily want to distribute it, i just want it for me. 
+
+i think handling the macos side of things is fine because _really_ what i want is a super thin chat client on my phone as an ios app that I can use to chat with my dgx spark over my tailnet
+
+---
+
+yeah tiny native swiftUI app with model picker. i want to be able to see ttft as well as tok/s, as well as chat history.
+
+---
+
+To install xcodes-app, run:
+  brew install --cask xcodes-ap 
+
+do i need this?
+
+---
+
+i don't have xcode installed
+
+---
+
+I need a logo for this. both for fornax and for fornax-ios

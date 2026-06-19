@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "99ebd6ab6b46",
+  "session_id": "0a0c946f-f913-4d4c-855b-d7a34e7c6fc0",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-19T11:23:05.182793Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "PRODUCT.md",
+    "assets/fornax-mark.svg",
+    "assets/fornax-wordmark.svg"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "7d6833817551",
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 73939,
+    "cache_read_tokens": 1347323,
+    "output_tokens": 61480,
+    "api_call_count": 36
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01MSrtmvUqLJe34SgiVEoJKn",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "impeccable"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "7d6833817551",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 139,
+        "end": 140,
+        "entry_ids": [
+          "bbeb58cf-1ba7-4433-9fa2-670e8a26d622"
+        ],
+        "tool_use_id": "toolu_01MSrtmvUqLJe34SgiVEoJKn"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01MSrtmvUqLJe34SgiVEoJKn"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: impeccable",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-19T11:23:05.173649Z",
+    "agent_lines": 128,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 128,
+    "total_lines_changed": 128,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
