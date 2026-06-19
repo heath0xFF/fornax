@@ -1,0 +1,85 @@
+ok so i have xcode now, it's open, how do i pick a device?
+
+---
+
+[Image #1] i have no idea where to click lol
+
+---
+
+ok tesging on the simulator right now -- couple of things: 
+
+1. typing indicator in the chat
+2. markdown rendering in the chat
+
+---
+
+[Image #2]
+
+---
+
+ok couple things: 
+
+1. markdown headers are not rendering -- let's figure that out
+2. chat window bottom padding is needed. the end of the message replies from the ai ends up being right at the line, and then gets covered up by the metrics.
+
+---
+
+ok build failts and i get a just plain white screen on launch. 0x23b33ef24 <+8>:  b.lo   0x23b33ef44               ; <+40> Thread 1: abort with payload or reason -[OS_dispatch_mach_msg _setContext:]: unrecognized selector sent to instance 0x1054baaa0 (no message forward handler is installed)
+
+---
+
+[Image #3] it works on the simulator, but the padding is still not enough. maybe 5-10 more pixels
+
+---
+
+[Image #4] message typing indicator bubble needs padding
+
+---
+
+do i need to be running xcodegen every time?
+
+---
+
+[Image #5] ok the padding is still not working.
+
+---
+
+[Image #6] i'm getting this in xcode and then on my phone plugged into my macbook via usb just shows a white screen when i launch the app
+
+---
+
+yeah still nothing. runs on simulator tho
+
+---
+
+oh that probably explains it. my phone is on ios 27 beta
+
+---
+
+damn why i can't i add ios27 as a platform? it's not available...
+
+---
+
+can i run a built version of this app on ios27?
+
+---
+
+https://developer.apple.com/xcode/whats-new/ it looks like they have xcode 27 beta out?
+
+---
+
+ok great that worked! now we're in business. 
+
+can you do something for me? can you please add some informaiton in new chats at the top on what model is being selected for it? i think some overall settings for default model is good. but when i start a new chat, i have no idea what model i'm using and if i need to select a new one?
+
+---
+
+ok three things now: 
+
+1. dark mode in settings (light/dark/system)
+2. auto title generator - shouldn't just be the first message i send
+3. new messages shouldn't save until i _send_ a message. if i create a new message and nothing sends -- then it should be ephemeral.
+
+---
+
+nice ok i'm ready for a full build that lives on fornax now... with the icons you made earlier. how do we do that?

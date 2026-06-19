@@ -1,0 +1,97 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "f170eae537e6",
+  "session_id": "0a0c946f-f913-4d4c-855b-d7a34e7c6fc0",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-19T13:57:50.868866Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "ios/.gitignore",
+    "ios/FornaxMobile/App.swift",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.svg",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/Contents.json",
+    "ios/FornaxMobile/Assets.xcassets/Contents.json",
+    "ios/FornaxMobile/Info.plist",
+    "ios/FornaxMobile/Models/ChatMessage.swift",
+    "ios/FornaxMobile/Models/Conversation.swift",
+    "ios/FornaxMobile/Services/LLMClient.swift",
+    "ios/FornaxMobile/Storage/ConversationStore.swift",
+    "ios/FornaxMobile/Views/ChatView.swift",
+    "ios/FornaxMobile/Views/ConversationListView.swift",
+    "ios/FornaxMobile/Views/MarkdownText.swift",
+    "ios/FornaxMobile/Views/SettingsView.swift",
+    "ios/project.yml"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "193e98f2d759",
+  "checkpoint_transcript_start": 200,
+  "transcript_lines_at_start": 200,
+  "token_usage": {
+    "input_tokens": 101,
+    "cache_creation_tokens": 189081,
+    "cache_read_tokens": 6747082,
+    "output_tokens": 74341,
+    "api_call_count": 61
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01MSrtmvUqLJe34SgiVEoJKn",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "impeccable"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "193e98f2d759",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 139,
+        "end": 140,
+        "entry_ids": [
+          "bbeb58cf-1ba7-4433-9fa2-670e8a26d622"
+        ],
+        "tool_use_id": "toolu_01MSrtmvUqLJe34SgiVEoJKn"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01MSrtmvUqLJe34SgiVEoJKn"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: impeccable",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 24
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-19T13:57:50.845269Z",
+    "agent_lines": 1088,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1088,
+    "total_lines_changed": 1088,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
