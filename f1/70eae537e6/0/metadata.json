@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "f170eae537e6",
+  "session_id": "019edb39-d8ff-739e-907a-8085a2307735",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-19T13:57:41.451218Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "ios/.gitignore",
+    "ios/FornaxMobile/App.swift",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.svg",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/Contents.json",
+    "ios/FornaxMobile/Assets.xcassets/Contents.json",
+    "ios/FornaxMobile/Info.plist",
+    "ios/FornaxMobile/Models/ChatMessage.swift",
+    "ios/FornaxMobile/Models/Conversation.swift",
+    "ios/FornaxMobile/Services/LLMClient.swift",
+    "ios/FornaxMobile/Storage/ConversationStore.swift",
+    "ios/FornaxMobile/Views/ChatView.swift",
+    "ios/FornaxMobile/Views/ConversationListView.swift",
+    "ios/FornaxMobile/Views/MarkdownText.swift",
+    "ios/FornaxMobile/Views/SettingsView.swift",
+    "ios/project.yml"
+  ],
+  "agent": "Pi",
+  "model": "qwen3.6-27b",
+  "turn_id": "00085939847a",
+  "checkpoint_transcript_start": 465,
+  "transcript_lines_at_start": 465,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-19T13:57:41.433009Z",
+    "agent_lines": 1088,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1088,
+    "total_lines_changed": 1088,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

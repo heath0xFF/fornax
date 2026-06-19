@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "f170eae537e6",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "ios/.gitignore",
+    "ios/FornaxMobile/App.swift",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.svg",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/Contents.json",
+    "ios/FornaxMobile/Assets.xcassets/Contents.json",
+    "ios/FornaxMobile/Info.plist",
+    "ios/FornaxMobile/Models/ChatMessage.swift",
+    "ios/FornaxMobile/Models/Conversation.swift",
+    "ios/FornaxMobile/Services/LLMClient.swift",
+    "ios/FornaxMobile/Storage/ConversationStore.swift",
+    "ios/FornaxMobile/Views/ChatView.swift",
+    "ios/FornaxMobile/Views/ConversationListView.swift",
+    "ios/FornaxMobile/Views/MarkdownText.swift",
+    "ios/FornaxMobile/Views/SettingsView.swift",
+    "ios/project.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f1/70eae537e6/0/metadata.json",
+      "transcript": "/f1/70eae537e6/0/full.jsonl",
+      "content_hash": "/f1/70eae537e6/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
