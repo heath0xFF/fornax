@@ -1,0 +1,41 @@
+ok nice. the app icon still doesn't render on the home screen. but it shows it in the device management under my icloud name. is that a cmd-r thing and we need to build and "install" the app?
+
+---
+
+yeah i did that and it still shows blank
+
+---
+
+still no app icon. i deleted the app and reinstalled it
+
+---
+
+i just set the icon customization back to default
+
+---
+
+well i want the dark icon to work
+
+---
+
+yeah still doesn't work
+
+---
+
+yeah still doesn't work lol
+
+---
+
+yean now none of the icons work
+
+---
+
+yeah no assets still and i'm getting the white screen of death -- doesn't load on my phone
+
+---
+
+ok it works when i stop the cmd-r function. but still all the icons are gone. they're just the default app icons from xcode. the blueprint background or whatever
+
+---
+
+ha the force restart did it.

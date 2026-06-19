@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "f0fedd02d1be",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-Dark.png",
+    "ios/FornaxMobile/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f0/fedd02d1be/0/metadata.json",
+      "transcript": "/f0/fedd02d1be/0/full.jsonl",
+      "content_hash": "/f0/fedd02d1be/0/content_hash.txt",
+      "prompt": "/f0/fedd02d1be/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 92,
+    "cache_creation_tokens": 164363,
+    "cache_read_tokens": 6195242,
+    "output_tokens": 98981,
+    "api_call_count": 68
+  }
+}
