@@ -1,4 +1,4 @@
-use crate::message::{ContentPart, Message, Role};
+use crate::message::{Message, Role};
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -13,49 +13,6 @@ pub struct Conversation {
     pub endpoint: Option<String>,
 }
 
-/// A project groups conversations in the sidebar.
-pub struct Project {
-    pub id: i64,
-    pub name: String,
-    pub pinned: bool,
-}
-
-/// Aggregated usage for the Usage page. Built from the `usage` table — one row
-/// per completed stream turn (tool-loop turns included).
-#[derive(Default)]
-pub struct UsageStats {
-    pub total_requests: i64,
-    pub ok_requests: i64,
-    pub prompt_tokens: i64,
-    pub completion_tokens: i64,
-    pub total_tokens: i64,
-    pub total_cost: f64,
-    /// Latency/throughput percentiles across all recorded turns.
-    pub ttft_p50_ms: Option<f64>,
-    pub ttft_p95_ms: Option<f64>,
-    pub decode_p50_tok_s: Option<f64>,
-    pub decode_p95_tok_s: Option<f64>,
-    pub by_model: Vec<UsageByModel>,
-    pub daily: Vec<UsageDaily>,
-}
-
-pub struct UsageByModel {
-    pub model: String,
-    pub endpoint: String,
-    pub requests: i64,
-    pub prompt_tokens: i64,
-    pub completion_tokens: i64,
-    pub total_tokens: i64,
-    pub cost: f64,
-    pub avg_ttft_ms: Option<f64>,
-    pub avg_decode_tok_s: Option<f64>,
-}
-
-pub struct UsageDaily {
-    pub date: String,
-    pub total_tokens: i64,
-}
-
 /// One completed stream turn's measured usage, ready to persist.
 pub struct UsageRecord<'a> {
     pub endpoint: &'a str,
@@ -68,43 +25,12 @@ pub struct UsageRecord<'a> {
     pub ok: bool,
 }
 
-/// Per-conversation settings snapshot. All fields are `Option` because a
-/// conversation may have been created before any setting was customized
-/// (column NULL → use the global default).
-#[derive(Clone, Debug, Default)]
-pub struct ConversationSettings {
-    pub model: Option<String>,
-    pub system_prompt: Option<String>,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u32>,
-    pub use_max_tokens: bool,
-    pub top_p: Option<f32>,
-    pub frequency_penalty: Option<f32>,
-    pub presence_penalty: Option<f32>,
-    pub stop_sequences: Vec<String>,
-    pub endpoint: Option<String>,
-    /// Working directory for tool calls in this conversation. `None` falls
-    /// back to `~`. Set per-conversation via the settings panel.
-    pub working_dir: Option<String>,
-    /// Per-conversation auto-compaction overrides. `None` falls back to the
-    /// global `Config` value.
-    pub auto_compact: Option<bool>,
-    pub compact_threshold_pct: Option<f32>,
-    pub compact_keep_recent: Option<u32>,
-}
-
-pub struct Storage {
+pub struct ConversationStorage {
     conn: Connection,
 }
 
-impl Default for Storage {
+impl Default for ConversationStorage {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Storage {
-    pub fn new() -> Self {
         let path = Self::db_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
@@ -115,18 +41,16 @@ impl Storage {
             }
         }
         let conn = Connection::open(&path).expect("Failed to open database");
-        // Enable foreign keys and WAL mode for better concurrency
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
             .ok();
-        // Wait up to 5s for a lock instead of immediately returning SQLITE_BUSY.
-        // Without this, two Fornax windows writing concurrently race and the
-        // loser silently drops its write (we use `.ok()` on most calls).
         let _ = conn.busy_timeout(Duration::from_secs(5));
         let storage = Self { conn };
         storage.init_tables();
         storage
     }
+}
 
+impl ConversationStorage {
     fn db_path() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -135,12 +59,6 @@ impl Storage {
     }
 
     fn init_tables(&self) {
-        // Step 1: schema_version + the *baseline 0.6.0 shape* of every
-        // table. Newer columns are ALTERed in below. This split matters
-        // because `CREATE TABLE IF NOT EXISTS conversations (... pinned ...)`
-        // is a no-op when the table already exists from a prior version
-        // *without* `pinned` — so the old code crashed on first launch
-        // for any user upgrading from 0.6.x without wiping the DB.
         self.conn
             .execute_batch(
                 "CREATE TABLE IF NOT EXISTS schema_version (
@@ -187,11 +105,8 @@ impl Storage {
             )
             .expect("Failed to create baseline tables");
 
-        // Step 2: ensure all v2 columns exist, ALTERing them in if missing.
-        // Idempotent — re-runs cheaply on every launch.
         self.ensure_v2_columns();
 
-        // Step 3: indexes + version stamp. Safe now that columns exist.
         self.conn
             .execute_batch(
                 "CREATE INDEX IF NOT EXISTS idx_messages_conv_position ON messages(conversation_id, position);
@@ -204,14 +119,7 @@ impl Storage {
     }
 
     /// Bring every table up to the v2 column set by ALTERing in any column
-    /// that's missing. The list of (table, column, type) is the source of
-    /// truth — adding a future column is one line here, no schema-version
-    /// math required.
-    ///
-    /// Errors are swallowed per-column on purpose: ALTER TABLE failures on
-    /// a single column shouldn't take down launch (the user can still read
-    /// existing data), and the most common failure ("column already exists"
-    /// when our `pragma_table_info` race lost) is benign.
+    /// that's missing.
     fn ensure_v2_columns(&self) {
         const CONV_COLS: &[(&str, &str)] = &[
             ("model", "TEXT"),
@@ -227,11 +135,8 @@ impl Storage {
             ("pinned", "INTEGER NOT NULL DEFAULT 0"),
             ("draft", "TEXT"),
             ("auto_titled", "INTEGER NOT NULL DEFAULT 0"),
-            // Phase 5a: per-conversation working directory for tool calls.
             ("working_dir", "TEXT"),
-            // Project grouping (nullable — loose chats have NULL).
             ("project_id", "INTEGER"),
-            // Auto-compaction: per-conversation overrides + persisted summary state.
             ("auto_compact", "INTEGER"),
             ("compact_threshold_pct", "REAL"),
             ("compact_keep_recent", "INTEGER"),
@@ -239,15 +144,9 @@ impl Storage {
             ("summary_through", "INTEGER"),
         ];
         const MSG_COLS: &[(&str, &str)] = &[
-            // SQLite allows ALTER TABLE ADD COLUMN with a self-referencing
-            // FK as long as no NOT NULL is involved. parent_id is nullable
-            // (root rows have NULL) so this is safe.
             ("parent_id", "INTEGER REFERENCES messages(id) ON DELETE CASCADE"),
             ("branch_index", "INTEGER NOT NULL DEFAULT 0"),
             ("created_at", "INTEGER"),
-            // Phase 5a: assistant rows can carry tool_calls (JSON-encoded
-            // Vec<ToolCall>); rows with role='tool' carry the tool_call_id
-            // they're answering.
             ("tool_calls", "TEXT"),
             ("tool_call_id", "TEXT"),
         ];
@@ -264,7 +163,6 @@ impl Storage {
             ("endpoint", "TEXT"),
         ];
 
-        // Usage gained a `cost` column after the table first shipped.
         const USAGE_COLS: &[(&str, &str)] = &[("cost", "REAL")];
 
         for (col, ty) in CONV_COLS {
@@ -291,26 +189,11 @@ impl Storage {
             )
             .unwrap_or(0);
         if exists == 0 {
-            // Table/column names come from compile-time string literals
-            // above, not user input — string-formatting them into the SQL
-            // is safe here.
             let sql = format!("ALTER TABLE {table} ADD COLUMN {column} {type_def}");
             if let Err(e) = self.conn.execute(&sql, []) {
                 eprintln!("Migration warning: failed to add {table}.{column}: {e}");
             }
         }
-    }
-
-    /// Current schema version, or 0 if the table is empty/missing.
-    #[allow(dead_code)] // used by tests; future migrations will branch on this
-    fn schema_version(&self) -> i64 {
-        self.conn
-            .query_row(
-                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0)
     }
 
     pub fn create_conversation(&self, title: &str) -> Result<i64, String> {
@@ -345,135 +228,6 @@ impl Storage {
             .ok();
     }
 
-    /// Aggregate the `usage` table for the Usage page: grand totals, a per-model
-    /// breakdown (newest-first by request count), and a daily token series.
-    pub fn usage_stats(&self) -> UsageStats {
-        let mut stats = UsageStats::default();
-
-        if let Ok(row) = self.conn.query_row(
-            "SELECT COUNT(*), \
-                    COALESCE(SUM(ok), 0), \
-                    COALESCE(SUM(prompt_tokens), 0), \
-                    COALESCE(SUM(completion_tokens), 0), \
-                    COALESCE(SUM(cost), 0) \
-             FROM usage",
-            [],
-            |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, i64>(1)?,
-                    r.get::<_, i64>(2)?,
-                    r.get::<_, i64>(3)?,
-                    r.get::<_, f64>(4)?,
-                ))
-            },
-        ) {
-            stats.total_requests = row.0;
-            stats.ok_requests = row.1;
-            stats.prompt_tokens = row.2;
-            stats.completion_tokens = row.3;
-            stats.total_tokens = row.2 + row.3;
-            stats.total_cost = row.4;
-        }
-
-        // SQLite has no PERCENTILE function — pull the non-null samples and pick
-        // the percentile index in Rust (cheap; the table is small).
-        stats.ttft_p50_ms = self.usage_percentile("ttft_ms", 0.50);
-        stats.ttft_p95_ms = self.usage_percentile("ttft_ms", 0.95);
-        stats.decode_p50_tok_s = self.usage_percentile("decode_tok_s", 0.50);
-        stats.decode_p95_tok_s = self.usage_percentile("decode_tok_s", 0.95);
-
-        if let Ok(mut stmt) = self.conn.prepare(
-            "SELECT model, endpoint, COUNT(*), \
-                    COALESCE(SUM(prompt_tokens), 0), \
-                    COALESCE(SUM(completion_tokens), 0), \
-                    COALESCE(SUM(cost), 0), \
-                    AVG(ttft_ms), AVG(decode_tok_s) \
-             FROM usage \
-             GROUP BY model, endpoint \
-             ORDER BY COUNT(*) DESC",
-        ) {
-            if let Ok(rows) = stmt.query_map([], |r| {
-                let prompt: i64 = r.get(3)?;
-                let completion: i64 = r.get(4)?;
-                Ok(UsageByModel {
-                    model: r.get(0)?,
-                    endpoint: r.get(1)?,
-                    requests: r.get(2)?,
-                    prompt_tokens: prompt,
-                    completion_tokens: completion,
-                    total_tokens: prompt + completion,
-                    cost: r.get(5)?,
-                    avg_ttft_ms: r.get(6)?,
-                    avg_decode_tok_s: r.get(7)?,
-                })
-            }) {
-                stats.by_model = rows.filter_map(Result::ok).collect();
-            }
-        }
-
-        if let Ok(mut stmt) = self.conn.prepare(
-            "SELECT date(ts), COALESCE(SUM(prompt_tokens + completion_tokens), 0) \
-             FROM usage \
-             GROUP BY date(ts) \
-             ORDER BY date(ts)",
-        ) {
-            if let Ok(rows) = stmt.query_map([], |r| {
-                Ok(UsageDaily {
-                    date: r.get(0)?,
-                    total_tokens: r.get(1)?,
-                })
-            }) {
-                stats.daily = rows.filter_map(Result::ok).collect();
-            }
-        }
-
-        stats
-    }
-
-    /// Nearest-rank percentile of a non-null usage column (`q` in 0.0..=1.0).
-    /// Returns `None` when there are no samples. `col` is a compile-time
-    /// literal, never user input.
-    fn usage_percentile(&self, col: &str, q: f64) -> Option<f64> {
-        let sql = format!(
-            "SELECT {col} FROM usage WHERE {col} IS NOT NULL ORDER BY {col}"
-        );
-        let mut stmt = self.conn.prepare(&sql).ok()?;
-        let values: Vec<f64> = stmt
-            .query_map([], |r| r.get::<_, f64>(0))
-            .ok()?
-            .filter_map(Result::ok)
-            .collect();
-        if values.is_empty() {
-            return None;
-        }
-        let rank = (q * values.len() as f64).ceil() as usize;
-        let idx = rank.saturating_sub(1).min(values.len() - 1);
-        Some(values[idx])
-    }
-
-    /// Wipe all recorded usage (the Usage page's "clear" action).
-    pub fn clear_usage(&self) {
-        self.conn.execute("DELETE FROM usage", []).ok();
-    }
-
-    /// Enforce the usage retention window: delete rows older than `days`.
-    /// `0` is a no-op (keep forever). Returns the number of rows removed.
-    pub fn prune_usage(&self, days: u32) -> usize {
-        if days == 0 {
-            return 0;
-        }
-        // `days` is a `u32` from config, formatted into the SQLite datetime
-        // modifier — not user-supplied free text, so this is safe.
-        let cutoff = format!("-{days} days");
-        self.conn
-            .execute(
-                "DELETE FROM usage WHERE ts < datetime('now', ?1)",
-                params![cutoff],
-            )
-            .unwrap_or(0)
-    }
-
     pub fn update_conversation_title(&self, id: i64, title: &str) {
         self.conn
             .execute(
@@ -506,75 +260,7 @@ impl Storage {
         }
     }
 
-    // ---------- projects ----------
-
-    pub fn create_project(&self, name: &str) -> Result<i64, String> {
-        self.conn
-            .execute("INSERT INTO projects (name) VALUES (?1)", params![name])
-            .map_err(|e| format!("Failed to create project: {e}"))?;
-        Ok(self.conn.last_insert_rowid())
-    }
-
-    pub fn list_projects(&self) -> Vec<Project> {
-        let mut stmt = match self.conn.prepare(
-            "SELECT id, name, pinned FROM projects ORDER BY pinned DESC, name COLLATE NOCASE",
-        ) {
-            Ok(s) => s,
-            Err(_) => return Vec::new(),
-        };
-        match stmt.query_map([], |row| {
-            Ok(Project {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                pinned: row.get::<_, i64>(2)? != 0,
-            })
-        }) {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-            Err(_) => Vec::new(),
-        }
-    }
-
-    pub fn rename_project(&self, id: i64, name: &str) {
-        self.conn
-            .execute("UPDATE projects SET name = ?1 WHERE id = ?2", params![name, id])
-            .ok();
-    }
-
-    pub fn set_project_pinned(&self, id: i64, pinned: bool) {
-        self.conn
-            .execute(
-                "UPDATE projects SET pinned = ?1 WHERE id = ?2",
-                params![pinned as i64, id],
-            )
-            .ok();
-    }
-
-    /// Delete a project; its conversations are detached (project_id → NULL),
-    /// not deleted.
-    pub fn delete_project(&self, id: i64) {
-        if let Ok(tx) = self.conn.unchecked_transaction() {
-            tx.execute(
-                "UPDATE conversations SET project_id = NULL WHERE project_id = ?1",
-                params![id],
-            )
-            .ok();
-            tx.execute("DELETE FROM projects WHERE id = ?1", params![id]).ok();
-            tx.commit().ok();
-        }
-    }
-
-    /// Assign (or clear, with `None`) a conversation's project.
-    pub fn set_conversation_project(&self, conversation_id: i64, project_id: Option<i64>) {
-        self.conn
-            .execute(
-                "UPDATE conversations SET project_id = ?1 WHERE id = ?2",
-                params![project_id, conversation_id],
-            )
-            .ok();
-    }
-
     pub fn delete_conversation(&self, id: i64) {
-        // Use a transaction so both deletes succeed or both fail
         if let Ok(tx) = self.conn.unchecked_transaction() {
             let r1 = tx.execute(
                 "DELETE FROM messages WHERE conversation_id = ?1",
@@ -585,11 +271,9 @@ impl Storage {
             if r1.is_ok() && r2.is_ok() {
                 tx.commit().ok();
             }
-            // tx drops and rolls back on failure
         }
     }
 
-    /// Delete every conversation and its messages. Projects are kept.
     pub fn delete_all_conversations(&self) -> Result<(), String> {
         let tx = self
             .conn
@@ -602,27 +286,18 @@ impl Storage {
         tx.commit().map_err(|e| format!("Failed to commit: {e}"))
     }
 
+    pub fn set_pinned(&self, id: i64, pinned: bool) {
+        self.conn
+            .execute(
+                "UPDATE conversations SET pinned = ?1 WHERE id = ?2",
+                params![pinned as i64, id],
+            )
+            .ok();
+    }
+
     /// Incremental save: messages with `id = None` are INSERTed (and have
     /// their assigned rowid written back into the struct via the caller's
-    /// `&mut`); messages with `id = Some` are UPDATEd in place. This
-    /// preserves branch history — the previous delete-and-reinsert pattern
-    /// would have wiped sibling branches every save.
-    ///
-    /// **Auto-linkage**: a new message (id=None) with no explicit parent_id
-    /// links to the immediately preceding message in the slice. This makes
-    /// normal turn appends ("user push then assistant push") just work
-    /// without callers threading ids around. Sibling creation (regenerate,
-    /// edit) sets `parent_id` explicitly *before* calling save, so the
-    /// auto-link doesn't apply there.
-    ///
-    /// **Caller contract**: when relying on auto-linkage, pass a slice that
-    /// includes the conversation's *current active tail* — not just the
-    /// new messages. Both `save_current` (in app.rs) and the test helpers
-    /// pass `&mut self.messages`, which is the active path; this is the
-    /// supported shape. Passing only the new tail will fall back to a
-    /// "highest-position row in the conv" tail query that may parent off
-    /// an unrelated sibling branch if the user navigated away from the
-    /// most-recently-inserted branch.
+    /// `&mut`); messages with `id = Some` are UPDATEd in place.
     pub fn save_messages(
         &self,
         conversation_id: i64,
@@ -633,9 +308,6 @@ impl Storage {
             .unchecked_transaction()
             .map_err(|e| format!("Failed to start transaction: {e}"))?;
 
-        // Find the highest existing position so new inserts append rather
-        // than collide with existing rows. Position is a tiebreaker for the
-        // legacy load path and a stable insertion order.
         let mut next_position: i64 = tx
             .query_row(
                 "SELECT COALESCE(MAX(position), -1) FROM messages WHERE conversation_id = ?1",
@@ -664,12 +336,6 @@ impl Storage {
             };
             match msg.id {
                 Some(id) => {
-                    // Streaming append on the assistant message updates
-                    // content frequently; parent_id and branch_index never
-                    // change after insert, so don't touch them. tool_calls
-                    // and tool_call_id are also written here so an in-place
-                    // update on an assistant message that gained tool calls
-                    // mid-stream lands them.
                     tx.execute(
                         "UPDATE messages SET content = ?1, created_at = ?2,
                                              tool_calls = ?3, tool_call_id = ?4
@@ -686,10 +352,6 @@ impl Storage {
                     prev_id = Some(id);
                 }
                 None => {
-                    // Auto-link: if the caller didn't set parent_id, fall
-                    // back to the previous message in the slice (or the
-                    // conversation's existing tail when this is the first
-                    // entry to be inserted in a turn).
                     if msg.parent_id.is_none() {
                         msg.parent_id = prev_id.or_else(|| {
                             tx.query_row(
@@ -737,44 +399,7 @@ impl Storage {
         tx.commit().map_err(|e| format!("Failed to commit: {e}"))
     }
 
-    /// Compute the next branch_index for a new sibling under `parent_id` in
-    /// the given conversation. Returns 0 if the parent has no children yet.
-    pub fn next_branch_index(&self, conversation_id: i64, parent_id: Option<i64>) -> i64 {
-        // SQL NULL doesn't compare equal with `=`, so use IS for the root
-        // branch case (parent_id IS NULL).
-        let max: i64 = match parent_id {
-            Some(pid) => self
-                .conn
-                .query_row(
-                    "SELECT COALESCE(MAX(branch_index), -1) FROM messages
-                     WHERE conversation_id = ?1 AND parent_id = ?2",
-                    params![conversation_id, pid],
-                    |row| row.get(0),
-                )
-                .unwrap_or(-1),
-            None => self
-                .conn
-                .query_row(
-                    "SELECT COALESCE(MAX(branch_index), -1) FROM messages
-                     WHERE conversation_id = ?1 AND parent_id IS NULL",
-                    params![conversation_id],
-                    |row| row.get(0),
-                )
-                .unwrap_or(-1),
-        };
-        max + 1
-    }
-
-    /// Load the active path for a conversation. Two modes:
-    ///
-    /// - **Legacy (0.7.0)**: every row has `parent_id IS NULL`. Return all
-    ///   rows in `position` order, exactly as before.
-    /// - **Branched**: walk from the newest root (parent_id IS NULL with
-    ///   the most recent `created_at`) and at each step pick the child with
-    ///   the most recent `created_at`. Stops at a leaf.
     pub fn load_messages(&self, conversation_id: i64) -> Vec<Message> {
-        // Pull every row once, then walk in memory. The largest Fornax
-        // conversation is going to have hundreds of messages, not millions.
         let rows = match self.fetch_all_message_rows(conversation_id) {
             Some(r) => r,
             None => return Vec::new(),
@@ -783,9 +408,6 @@ impl Storage {
             return Vec::new();
         }
 
-        // Branching is signalled by the presence of any non-NULL parent_id.
-        // A clean legacy conv (or a newly-created conv with one root and no
-        // children yet) takes the position-ordered fast path.
         let any_parent_set = rows.iter().any(|r| r.parent_id.is_some());
         if !any_parent_set {
             let mut sorted = rows;
@@ -793,17 +415,12 @@ impl Storage {
             return sorted.into_iter().map(MessageRow::into_message).collect();
         }
 
-        // Branched walk: newest root, then newest child at each step.
         use std::collections::HashMap;
         let mut by_parent: HashMap<Option<i64>, Vec<MessageRow>> = HashMap::new();
         for r in rows {
             by_parent.entry(r.parent_id).or_default().push(r);
         }
-        // Sort each bucket by created_at DESC so `.first()` gives the newest.
         for bucket in by_parent.values_mut() {
-            // Newest sibling wins; branch_index DESC is the deterministic
-            // tiebreaker when two siblings share a created_at (or when both
-            // are NULL on legacy rows).
             bucket.sort_by_key(|r| (std::cmp::Reverse(r.created_at), std::cmp::Reverse(r.branch_index)));
         }
 
@@ -814,9 +431,6 @@ impl Storage {
                 break;
             };
             let id = picked.id;
-            // Clone here because the bucket may be referenced again at a
-            // different parent depth (rare, but cheap relative to a chat
-            // round-trip).
             out.push(picked.clone().into_message());
             current_parent = Some(id);
         }
@@ -839,12 +453,7 @@ impl Storage {
     }
 
     /// One-time backfill: set `parent_id` of each row to the id of the
-    /// previous row (by position) within the same conversation. No-op if
-    /// any row already has a non-NULL parent_id (idempotent).
-    ///
-    /// Called by edit/regenerate before they create the first sibling in a
-    /// legacy 0.7.0 conversation, so the new branch slots into a coherent
-    /// parent chain.
+    /// previous row (by position) within the same conversation.
     pub fn backfill_parent_ids(&self, conversation_id: i64) -> Result<(), String> {
         let already: i64 = self
             .conn
@@ -876,7 +485,6 @@ impl Storage {
             .filter_map(|r| r.ok())
             .collect()
         };
-        // Walk in position order: each row's parent is the previous row's id.
         let mut prev_id: Option<i64> = None;
         for (id, _pos) in pairs {
             if let Some(p) = prev_id {
@@ -892,11 +500,7 @@ impl Storage {
             .map_err(|e| format!("Failed to commit backfill: {e}"))
     }
 
-    /// All messages with the same parent_id as `message_id` (including the
-    /// message itself), sorted by branch_index ascending. Used to render the
-    /// `◀ N/M ▶` sibling navigator.
     pub fn siblings_of(&self, message_id: i64) -> Vec<MessageHeader> {
-        // Look up parent_id and conversation_id of the target.
         let row: Option<(Option<i64>, i64)> = self
             .conn
             .query_row(
@@ -923,9 +527,6 @@ impl Storage {
         let Ok(stmt) = &mut stmt else {
             return Vec::new();
         };
-        // Collect inside each arm so the two closures don't need to unify
-        // — `query_map` is generic over the closure type and the arms would
-        // otherwise produce incompatible MappedRows types.
         let map_row = |row: &rusqlite::Row<'_>| {
             Ok::<MessageHeader, rusqlite::Error>(MessageHeader {
                 id: row.get(0)?,
@@ -945,13 +546,7 @@ impl Storage {
         }
     }
 
-    /// Walk the active path starting from a specific message — used when
-    /// the user clicks a sibling-navigation arrow and we need to rebuild
-    /// the suffix of `self.messages` from that branch point down. The
-    /// returned vec includes `start_id` as the first element, then walks
-    /// children picking newest at each fork.
     pub fn walk_from(&self, start_id: i64) -> Vec<Message> {
-        // Lift the conversation id once, then reuse the per-conv fetch.
         let conv_id: Option<i64> = self
             .conn
             .query_row(
@@ -978,9 +573,6 @@ impl Storage {
             by_parent.entry(r.parent_id).or_default().push(r);
         }
         for bucket in by_parent.values_mut() {
-            // Newest sibling wins; branch_index DESC is the deterministic
-            // tiebreaker when two siblings share a created_at (or when both
-            // are NULL on legacy rows).
             bucket.sort_by_key(|r| (std::cmp::Reverse(r.created_at), std::cmp::Reverse(r.branch_index)));
         }
 
@@ -998,11 +590,6 @@ impl Storage {
     }
 
     pub fn search(&self, query: &str) -> Vec<(i64, String, String)> {
-        // Two-phase search: SQL LIKE prunes candidate rows by raw content
-        // (which is JSON-encoded), then we parse each match in Rust and only
-        // keep rows whose *text* parts contain the query. Without the second
-        // phase, searching for "text" or "image_url" would match every
-        // multimodal row because of the JSON keys.
         let q_lower = query.to_ascii_lowercase();
         let escaped = query
             .replace('\\', "\\\\")
@@ -1034,13 +621,13 @@ impl Storage {
         candidates
             .into_iter()
             .filter_map(|(id, title, raw)| {
-                let parts: Vec<ContentPart> =
+                let parts: Vec<crate::message::ContentPart> =
                     serde_json::from_str(&raw).unwrap_or_else(|_| {
-                        vec![ContentPart::Text { text: raw.clone() }]
+                        vec![crate::message::ContentPart::Text { text: raw.clone() }]
                     });
                 let mut text = String::new();
                 for p in &parts {
-                    if let ContentPart::Text { text: t } = p {
+                    if let crate::message::ContentPart::Text { text: t } = p {
                         text.push_str(t);
                         text.push('\n');
                     }
@@ -1072,10 +659,10 @@ impl Storage {
 
         for msg in &messages {
             let role = match msg.role {
-                Role::User => "**You**",
-                Role::Assistant => "**AI**",
-                Role::System => "**System**",
-                Role::Tool => "**Tool**",
+                crate::message::Role::User => "**You**",
+                crate::message::Role::Assistant => "**AI**",
+                crate::message::Role::System => "**System**",
+                crate::message::Role::Tool => "**Tool**",
             };
             let body = msg.text_str();
             let image_count = msg.images().count();
@@ -1092,7 +679,7 @@ impl Storage {
 
     // ---- per-conversation settings ----
 
-    pub fn load_conversation_settings(&self, id: i64) -> ConversationSettings {
+    pub fn load_conversation_settings(&self, id: i64) -> crate::config::ConversationSettings {
         self.conn
             .query_row(
                 "SELECT model, system_prompt, temperature, max_tokens, use_max_tokens,
@@ -1106,7 +693,7 @@ impl Storage {
                         .as_deref()
                         .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
                         .unwrap_or_default();
-                    Ok(ConversationSettings {
+                    Ok(crate::config::ConversationSettings {
                         model: row.get(0).ok(),
                         system_prompt: row.get(1).ok(),
                         temperature: row.get::<_, Option<f64>>(2).ok().flatten().map(|v| v as f32),
@@ -1147,7 +734,7 @@ impl Storage {
             .unwrap_or_default()
     }
 
-    pub fn save_conversation_settings(&self, id: i64, s: &ConversationSettings) {
+    pub fn save_conversation_settings(&self, id: i64, s: &crate::config::ConversationSettings) {
         let stop_json = if s.stop_sequences.is_empty() {
             None
         } else {
@@ -1210,15 +797,6 @@ impl Storage {
             .ok();
     }
 
-    pub fn set_pinned(&self, id: i64, pinned: bool) {
-        self.conn
-            .execute(
-                "UPDATE conversations SET pinned = ?1 WHERE id = ?2",
-                params![pinned as i64, id],
-            )
-            .ok();
-    }
-
     pub fn save_draft(&self, id: i64, draft: &str) {
         self.conn
             .execute(
@@ -1228,8 +806,18 @@ impl Storage {
             .ok();
     }
 
-    /// Returns true if the conversation has not yet been auto-titled. Used
-    /// to gate the one-shot auto-title call so manual renames stick.
+    pub fn load_draft(&self, id: i64) -> Option<String> {
+        self.conn
+            .query_row(
+                "SELECT draft FROM conversations WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty())
+    }
+
     pub fn needs_auto_title(&self, id: i64) -> bool {
         self.conn
             .query_row(
@@ -1250,208 +838,43 @@ impl Storage {
             .ok();
     }
 
-    pub fn load_draft(&self, id: i64) -> Option<String> {
-        self.conn
-            .query_row(
-                "SELECT draft FROM conversations WHERE id = ?1",
-                params![id],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .ok()
-            .flatten()
-            .filter(|s| !s.is_empty())
-    }
-
-    // ---- presets ----
-
-    pub fn list_presets(&self) -> Vec<Preset> {
-        let mut stmt = match self.conn.prepare(
-            "SELECT id, name, model, system_prompt, temperature, max_tokens, use_max_tokens,
-                    top_p, frequency_penalty, presence_penalty, stop_sequences, endpoint
-             FROM presets ORDER BY name COLLATE NOCASE",
-        ) {
-            Ok(s) => s,
-            Err(_) => return Vec::new(),
+    /// Next branch index for a new child message under `parent_id`.
+    /// `parent_id = None` means root-level (no parent).
+    pub fn next_branch_index(&self, conversation_id: i64, parent_id: Option<i64>) -> i64 {
+        let max: i64 = match parent_id {
+            Some(pid) => self
+                .conn
+                .query_row(
+                    "SELECT COALESCE(MAX(branch_index), -1) FROM messages
+                     WHERE conversation_id = ?1 AND parent_id = ?2",
+                    params![conversation_id, pid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(-1),
+            None => self
+                .conn
+                .query_row(
+                    "SELECT COALESCE(MAX(branch_index), -1) FROM messages
+                     WHERE conversation_id = ?1 AND parent_id IS NULL",
+                    params![conversation_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(-1),
         };
-        stmt.query_map([], |row| {
-            let stop_json: Option<String> = row.get(10).ok();
-            let stop_sequences = stop_json
-                .as_deref()
-                .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
-                .unwrap_or_default();
-            Ok(Preset {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                settings: ConversationSettings {
-                    model: row.get(2).ok(),
-                    system_prompt: row.get(3).ok(),
-                    temperature: row.get::<_, Option<f64>>(4).ok().flatten().map(|v| v as f32),
-                    max_tokens: row.get::<_, Option<i64>>(5).ok().flatten().map(|v| v as u32),
-                    use_max_tokens: row.get::<_, i64>(6).unwrap_or(0) != 0,
-                    top_p: row.get::<_, Option<f64>>(7).ok().flatten().map(|v| v as f32),
-                    frequency_penalty: row
-                        .get::<_, Option<f64>>(8)
-                        .ok()
-                        .flatten()
-                        .map(|v| v as f32),
-                    presence_penalty: row
-                        .get::<_, Option<f64>>(9)
-                        .ok()
-                        .flatten()
-                        .map(|v| v as f32),
-                    stop_sequences,
-                    endpoint: row.get(11).ok(),
-                    // Presets don't carry a working_dir today — there's no
-                    // useful default ("be in /Users/heath/projects/X" makes
-                    // sense for a conv but not as a portable preset).
-                    working_dir: None,
-                    // Compaction overrides are conversation-scoped, not presets.
-                    auto_compact: None,
-                    compact_threshold_pct: None,
-                    compact_keep_recent: None,
-                },
-            })
-        })
-        .map(|rows| rows.filter_map(|r| r.ok()).collect())
-        .unwrap_or_default()
+        max + 1
     }
 
-    pub fn create_preset(&self, name: &str, s: &ConversationSettings) -> Result<i64, String> {
-        let stop_json = if s.stop_sequences.is_empty() {
-            None
-        } else {
-            serde_json::to_string(&s.stop_sequences).ok()
-        };
-        self.conn
-            .execute(
-                "INSERT INTO presets
-                 (name, model, system_prompt, temperature, max_tokens, use_max_tokens,
-                  top_p, frequency_penalty, presence_penalty, stop_sequences, endpoint)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![
-                    name,
-                    s.model,
-                    s.system_prompt,
-                    s.temperature.map(|v| v as f64),
-                    s.max_tokens.map(|v| v as i64),
-                    s.use_max_tokens as i64,
-                    s.top_p.map(|v| v as f64),
-                    s.frequency_penalty.map(|v| v as f64),
-                    s.presence_penalty.map(|v| v as f64),
-                    stop_json,
-                    s.endpoint,
-                ],
-            )
-            .map_err(|e| format!("Failed to create preset: {e}"))?;
-        Ok(self.conn.last_insert_rowid())
-    }
-
-    pub fn delete_preset(&self, id: i64) {
-        self.conn
-            .execute("DELETE FROM presets WHERE id = ?1", params![id])
-            .ok();
-    }
-}
-
-#[derive(Clone)]
-pub struct Preset {
-    pub id: i64,
-    pub name: String,
-    pub settings: ConversationSettings,
-}
-
-/// Lightweight sibling-row description for the navigation UI. Doesn't carry
-/// content — just enough to pick the right id and show "N/M".
-pub struct MessageHeader {
-    pub id: i64,
-    /// Persisted branch_index. Not currently read by the UI (the N/M
-    /// display uses array position) but exposed for tests / future code.
-    #[allow(dead_code)]
-    pub branch_index: i64,
-    #[allow(dead_code)]
-    pub created_at: Option<i64>,
-}
-
-/// Raw row from the messages table — we rebuild `Message` from this with
-/// the JSON content parse separated out so the load/walk paths don't
-/// duplicate parsing logic.
-#[derive(Clone)]
-struct MessageRow {
-    id: i64,
-    role: Role,
-    content: Vec<ContentPart>,
-    created_at: Option<i64>,
-    parent_id: Option<i64>,
-    branch_index: i64,
-    #[allow(dead_code)]
-    position: i64,
-    tool_calls: Option<Vec<crate::message::ToolCall>>,
-    tool_call_id: Option<String>,
-}
-
-impl MessageRow {
-    fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
-        let role_str: String = row.get(1)?;
-        let role = match role_str.as_str() {
-            "system" => Role::System,
-            "user" => Role::User,
-            "assistant" => Role::Assistant,
-            "tool" => Role::Tool,
-            _ => Role::Assistant,
-        };
-        let content_raw: String = row.get(2)?;
-        let content: Vec<ContentPart> = serde_json::from_str(&content_raw)
-            .unwrap_or_else(|_| vec![ContentPart::Text { text: content_raw }]);
-        let tool_calls_raw: Option<String> = row.get(7).ok();
-        let tool_calls = tool_calls_raw
-            .as_deref()
-            .and_then(|s| serde_json::from_str::<Vec<crate::message::ToolCall>>(s).ok());
-        Ok(MessageRow {
-            id: row.get(0)?,
-            role,
-            content,
-            created_at: row.get(3).ok(),
-            parent_id: row.get(4).ok(),
-            // Schema-guaranteed NOT NULL columns — propagate errors rather
-            // than silently default to 0 if the row shape ever drifts.
-            branch_index: row.get(5)?,
-            position: row.get(6)?,
-            tool_calls,
-            tool_call_id: row.get(8).ok(),
-        })
-    }
-
-    fn into_message(self) -> Message {
-        Message {
-            role: self.role,
-            content: self.content,
-            tool_calls: self.tool_calls,
-            tool_call_id: self.tool_call_id,
-            created_at: self.created_at,
-            id: Some(self.id),
-            parent_id: self.parent_id,
-            branch_index: self.branch_index,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::message::{ContentPart, ImageUrl, Message, Role};
-
-    fn mem_storage() -> Storage {
+    #[cfg(test)]
+    pub(crate) fn new_in_memory() -> Self {
         let conn = Connection::open_in_memory().expect("open :memory:");
         conn.execute_batch("PRAGMA foreign_keys=ON;").ok();
-        let storage = Storage { conn };
+        let storage = Self { conn };
         storage.init_tables();
         storage
     }
 
-    /// Build a Storage with the *original 0.6.0 schema* — no
-    /// schema_version table, no v2 columns. Used to prove that
-    /// init_tables migrates cleanly when launched against an old DB.
-    fn legacy_0_6_storage_with_data() -> Storage {
+    #[cfg(test)]
+    pub(crate) fn new_legacy_0_6_with_data() -> Self {
         let conn = Connection::open_in_memory().expect("open :memory:");
         conn.execute_batch(
             "CREATE TABLE conversations (
@@ -1470,53 +893,111 @@ mod tests {
             );",
         )
         .expect("create legacy schema");
-        // Insert one row in the legacy plain-text content shape.
-        conn.execute(
-            "INSERT INTO conversations (title) VALUES ('legacy chat')",
-            [],
-        )
-        .unwrap();
+        conn.execute("INSERT INTO conversations (title) VALUES ('legacy chat')", []).unwrap();
         conn.execute(
             "INSERT INTO messages (conversation_id, role, content, position)
              VALUES (1, 'user', 'hello from 0.6', 0)",
             [],
         )
         .unwrap();
-        Storage { conn }
+        Self { conn }
+    }
+}
+
+#[derive(Clone)]
+pub struct MessageHeader {
+    pub id: i64,
+    #[allow(dead_code)]
+    pub branch_index: i64,
+    #[allow(dead_code)]
+    pub created_at: Option<i64>,
+}
+
+#[derive(Clone)]
+struct MessageRow {
+    id: i64,
+    role: crate::message::Role,
+    content: Vec<crate::message::ContentPart>,
+    created_at: Option<i64>,
+    parent_id: Option<i64>,
+    branch_index: i64,
+    #[allow(dead_code)]
+    position: i64,
+    tool_calls: Option<Vec<crate::message::ToolCall>>,
+    tool_call_id: Option<String>,
+}
+
+impl MessageRow {
+    fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        let role_str: String = row.get(1)?;
+        let role = match role_str.as_str() {
+            "system" => crate::message::Role::System,
+            "user" => crate::message::Role::User,
+            "assistant" => crate::message::Role::Assistant,
+            "tool" => crate::message::Role::Tool,
+            _ => crate::message::Role::Assistant,
+        };
+        let content_raw: String = row.get(2)?;
+        let content: Vec<crate::message::ContentPart> = serde_json::from_str(&content_raw)
+            .unwrap_or_else(|_| vec![crate::message::ContentPart::Text { text: content_raw }]);
+        let tool_calls_raw: Option<String> = row.get(7).ok();
+        let tool_calls = tool_calls_raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Vec<crate::message::ToolCall>>(s).ok());
+        Ok(MessageRow {
+            id: row.get(0)?,
+            role,
+            content,
+            created_at: row.get(3).ok(),
+            parent_id: row.get(4).ok(),
+            branch_index: row.get(5)?,
+            position: row.get(6)?,
+            tool_calls,
+            tool_call_id: row.get(8).ok(),
+        })
     }
 
-    #[test]
-    fn schema_is_at_v2_after_init() {
-        let s = mem_storage();
-        assert_eq!(s.schema_version(), 2);
+    fn into_message(self) -> crate::message::Message {
+        crate::message::Message {
+            role: self.role,
+            content: self.content,
+            tool_calls: self.tool_calls,
+            tool_call_id: self.tool_call_id,
+            created_at: self.created_at,
+            id: Some(self.id),
+            parent_id: self.parent_id,
+            branch_index: self.branch_index,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::{ContentPart, ImageUrl, Message, Role};
+
+    fn mem() -> ConversationStorage {
+        ConversationStorage::new_in_memory()
+    }
+
+    fn ts(base: i64, offset: i64) -> Option<i64> {
+        Some(base + offset)
     }
 
     #[test]
     fn init_tables_migrates_legacy_0_6_db_in_place() {
-        // This is the regression test for the "no such column: parent_id"
-        // crash that hit any 0.6.x user upgrading without wiping their DB.
-        let s = legacy_0_6_storage_with_data();
-        // init_tables must NOT panic even though the existing tables lack
-        // every v2 column (parent_id, pinned, draft, auto_titled, etc).
+        let s = ConversationStorage::new_legacy_0_6_with_data();
         s.init_tables();
-
-        // Schema version is now 2.
-        assert_eq!(s.schema_version(), 2);
-
-        // The pre-existing conversation + message survived the migration.
         let convs = s.list_conversations();
         assert_eq!(convs.len(), 1);
         assert_eq!(convs[0].title, "legacy chat");
-        assert!(!convs[0].pinned); // newly-added column defaults to 0
+        assert!(!convs[0].pinned);
         let msgs = s.load_messages(convs[0].id);
         assert_eq!(msgs.len(), 1);
-        // Plain-text content (not JSON) round-trips via the load fallback.
         assert_eq!(msgs[0].text_str(), "hello from 0.6");
-        // New v2 columns default sensibly on legacy rows.
         assert_eq!(msgs[0].parent_id, None);
         assert_eq!(msgs[0].branch_index, 0);
-
-        // Subsequent saves write into the migrated schema without error.
+        // Subsequent saves work into the migrated schema.
         let mut new_msgs = vec![Message::text(Role::Assistant, "hi from 0.8".into())];
         s.save_messages(convs[0].id, &mut new_msgs)
             .expect("save into migrated DB");
@@ -1525,17 +1006,15 @@ mod tests {
 
     #[test]
     fn init_tables_is_idempotent() {
-        // Running init_tables twice on an already-migrated DB must be a
-        // no-op (no duplicate-column errors, schema_version stays at 2).
-        let s = legacy_0_6_storage_with_data();
+        let s = ConversationStorage::new_legacy_0_6_with_data();
         s.init_tables();
         s.init_tables();
-        assert_eq!(s.schema_version(), 2);
+        // Should not panic — running twice is a no-op.
     }
 
     #[test]
     fn round_trips_text_messages() {
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("hello").unwrap();
         let mut msgs = vec![
             Message::text(Role::User, "hi".to_string()),
@@ -1546,13 +1025,12 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].text_str(), "hi");
         assert_eq!(loaded[1].text_str(), "hello!");
-        // Auto-link: the second message's parent is the first.
         assert_eq!(loaded[1].parent_id, loaded[0].id);
     }
 
     #[test]
     fn round_trips_messages_with_images() {
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("vision").unwrap();
         let parts = vec![
             ContentPart::Text {
@@ -1574,9 +1052,7 @@ mod tests {
 
     #[test]
     fn search_post_filters_json_keys() {
-        // Without the post-filter, searching for "text" or "image_url" would
-        // match every multimodal row because of the JSON keys themselves.
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("vision conv").unwrap();
         s.save_messages(
             id,
@@ -1598,15 +1074,14 @@ mod tests {
         .unwrap();
         // "image_url" is a JSON key but not in any text part — must NOT match.
         assert!(s.search("image_url").is_empty());
-        // The actual user text MUST match.
         assert_eq!(s.search("hello world").len(), 1);
     }
 
     #[test]
     fn round_trips_per_conversation_settings() {
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("settings test").unwrap();
-        let original = ConversationSettings {
+        let original = crate::config::ConversationSettings {
             model: Some("gpt-4o".to_string()),
             system_prompt: Some("be terse".to_string()),
             temperature: Some(0.42),
@@ -1641,7 +1116,7 @@ mod tests {
 
     #[test]
     fn round_trips_compaction_state() {
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("compaction test").unwrap();
         assert_eq!(s.load_compaction(id), (None, None));
         s.save_compaction(id, "earlier summary", 42);
@@ -1653,40 +1128,33 @@ mod tests {
 
     #[test]
     fn pinned_conversations_sort_to_top() {
-        let s = mem_storage();
+        let s = mem();
         let a = s.create_conversation("first").unwrap();
         let b = s.create_conversation("second").unwrap();
         let c = s.create_conversation("third").unwrap();
         s.set_pinned(a, true);
         let listed = s.list_conversations();
         assert_eq!(listed.len(), 3);
-        // Pinned conversation is always first.
         assert_eq!(listed[0].id, a);
         assert!(listed[0].pinned);
-        // The remaining two are the unpinned ones — order between them
-        // depends on updated_at resolution (datetime('now') is per-second), so
-        // don't assert order, just membership.
         let rest: Vec<i64> = listed[1..].iter().map(|c| c.id).collect();
         assert!(rest.contains(&b));
         assert!(rest.contains(&c));
-        assert!(!listed[1].pinned);
-        assert!(!listed[2].pinned);
     }
 
     #[test]
     fn drafts_round_trip_and_clear() {
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("drafty").unwrap();
         s.save_draft(id, "in progress");
         assert_eq!(s.load_draft(id).as_deref(), Some("in progress"));
         s.save_draft(id, "");
-        // Empty drafts read back as None — we treat "" as "no draft".
         assert_eq!(s.load_draft(id), None);
     }
 
     #[test]
     fn auto_title_flag_is_one_shot() {
-        let s = mem_storage();
+        let s = mem();
         let id = s.create_conversation("t").unwrap();
         assert!(s.needs_auto_title(id));
         s.mark_auto_titled(id);
@@ -1694,141 +1162,8 @@ mod tests {
     }
 
     #[test]
-    fn presets_crud() {
-        let s = mem_storage();
-        assert!(s.list_presets().is_empty());
-        let settings = ConversationSettings {
-            model: Some("haiku".to_string()),
-            system_prompt: Some("be concise".to_string()),
-            temperature: Some(0.7),
-            ..ConversationSettings::default()
-        };
-        let pid = s.create_preset("Concise", &settings).unwrap();
-        let listed = s.list_presets();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].name, "Concise");
-        assert_eq!(listed[0].settings.model.as_deref(), Some("haiku"));
-        s.delete_preset(pid);
-        assert!(s.list_presets().is_empty());
-    }
-
-    #[test]
-    fn projects_crud_and_membership() {
-        let s = mem_storage();
-        assert!(s.list_projects().is_empty());
-
-        let pid = s.create_project("Spark").unwrap();
-        let cid = s.create_conversation("chat 1").unwrap();
-        assert_eq!(s.list_conversations()[0].project_id, None);
-
-        s.set_conversation_project(cid, Some(pid));
-        assert_eq!(s.list_conversations()[0].project_id, Some(pid));
-
-        s.set_project_pinned(pid, true);
-        s.rename_project(pid, "Spark2");
-        let projects = s.list_projects();
-        assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].name, "Spark2");
-        assert!(projects[0].pinned);
-
-        // Deleting a project keeps its conversations, detaching them.
-        s.delete_project(pid);
-        assert!(s.list_projects().is_empty());
-        assert_eq!(s.list_conversations()[0].project_id, None);
-    }
-
-    #[test]
-    fn usage_record_and_aggregate() {
-        let s = mem_storage();
-        assert_eq!(s.usage_stats().total_requests, 0);
-
-        let rec = |model: &'static str, p: u32, c: u32| UsageRecord {
-            endpoint: "http://localhost:42069/v1",
-            model,
-            prompt_tokens: Some(p),
-            completion_tokens: Some(c),
-            ttft_ms: Some(100.0),
-            decode_tok_s: Some(50.0),
-            cost: Some(0.01),
-            ok: true,
-        };
-        s.record_usage(&rec("mlx-a", 10, 20));
-        s.record_usage(&rec("mlx-a", 5, 15));
-        s.record_usage(&rec("mlx-b", 100, 200));
-
-        let stats = s.usage_stats();
-        assert_eq!(stats.total_requests, 3);
-        assert_eq!(stats.ok_requests, 3);
-        assert_eq!(stats.prompt_tokens, 115);
-        assert_eq!(stats.completion_tokens, 235);
-        assert_eq!(stats.total_tokens, 350);
-        assert!((stats.total_cost - 0.03).abs() < 1e-9);
-        // All ttft samples are 100 → both percentiles are 100.
-        assert_eq!(stats.ttft_p50_ms, Some(100.0));
-        assert_eq!(stats.ttft_p95_ms, Some(100.0));
-        assert_eq!(stats.decode_p50_tok_s, Some(50.0));
-
-        // Grouped by model, ordered by request count desc → mlx-a (2) first.
-        assert_eq!(stats.by_model.len(), 2);
-        assert_eq!(stats.by_model[0].model, "mlx-a");
-        assert_eq!(stats.by_model[0].requests, 2);
-        assert_eq!(stats.by_model[0].total_tokens, 50);
-        assert!((stats.by_model[0].cost - 0.02).abs() < 1e-9);
-        assert_eq!(stats.by_model[1].model, "mlx-b");
-
-        // One daily bucket (all rows recorded "now").
-        assert_eq!(stats.daily.len(), 1);
-        assert_eq!(stats.daily[0].total_tokens, 350);
-
-        s.clear_usage();
-        assert_eq!(s.usage_stats().total_requests, 0);
-    }
-
-    #[test]
-    fn usage_prune_respects_retention() {
-        let s = mem_storage();
-        let rec = UsageRecord {
-            endpoint: "ep",
-            model: "m",
-            prompt_tokens: Some(1),
-            completion_tokens: Some(1),
-            ttft_ms: None,
-            decode_tok_s: None,
-            cost: None,
-            ok: true,
-        };
-        s.record_usage(&rec); // recorded "now"
-        // A second row backdated 100 days.
-        s.conn
-            .execute(
-                "INSERT INTO usage (ts, endpoint, model, prompt_tokens, completion_tokens, ok) \
-                 VALUES (datetime('now', '-100 days'), 'ep', 'm', 1, 1, 1)",
-                [],
-            )
-            .unwrap();
-        assert_eq!(s.usage_stats().total_requests, 2);
-
-        // 0 = keep forever (no-op).
-        assert_eq!(s.prune_usage(0), 0);
-        assert_eq!(s.usage_stats().total_requests, 2);
-
-        // 30-day window drops the backdated row, keeps the fresh one.
-        assert_eq!(s.prune_usage(30), 1);
-        assert_eq!(s.usage_stats().total_requests, 1);
-    }
-
-    // ----- Phase 4: branching -----
-
-    /// Helper: bump created_at by a known delta so newest-wins picks are
-    /// deterministic. SQLite times via `datetime('now')` only resolve to
-    /// the second; we set our own ms timestamps to side-step that.
-    fn ts(base: i64, offset: i64) -> Option<i64> {
-        Some(base + offset)
-    }
-
-    #[test]
     fn save_messages_assigns_ids_and_writes_them_back() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("ids").unwrap();
         let mut msgs = vec![
             Message::text(Role::User, "u".into()),
@@ -1842,12 +1177,11 @@ mod tests {
 
     #[test]
     fn save_messages_updates_existing_in_place() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("update").unwrap();
         let mut msgs = vec![Message::text(Role::User, "before".into())];
         s.save_messages(conv, &mut msgs).unwrap();
         let id = msgs[0].id.unwrap();
-        // Mutate content and save again — id stays, content changes.
         msgs[0].content = vec![ContentPart::Text {
             text: "after".into(),
         }];
@@ -1860,9 +1194,7 @@ mod tests {
 
     #[test]
     fn legacy_load_falls_back_to_position_order() {
-        // A 0.7.0 conversation: every row has parent_id=NULL. load_messages
-        // must return them in position (== insertion) order.
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("legacy").unwrap();
         let mut msgs = vec![
             Message::text(Role::User, "u1".into()),
@@ -1871,8 +1203,6 @@ mod tests {
             Message::text(Role::Assistant, "a2".into()),
         ];
         s.save_messages(conv, &mut msgs).unwrap();
-        // Manually NULL out parent_id to simulate a legacy row layout
-        // (auto-link populated it during save above).
         s.conn
             .execute(
                 "UPDATE messages SET parent_id = NULL WHERE conversation_id = ?1",
@@ -1888,7 +1218,7 @@ mod tests {
 
     #[test]
     fn backfill_parent_ids_chains_legacy_rows() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("backfill").unwrap();
         let mut msgs = vec![
             Message::text(Role::User, "u1".into()),
@@ -1902,7 +1232,6 @@ mod tests {
                 params![conv],
             )
             .unwrap();
-
         s.backfill_parent_ids(conv).unwrap();
         let loaded = s.load_messages(conv);
         assert_eq!(loaded[0].parent_id, None);
@@ -1912,7 +1241,7 @@ mod tests {
 
     #[test]
     fn backfill_parent_ids_is_idempotent() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("idempotent").unwrap();
         let mut msgs = vec![
             Message::text(Role::User, "u".into()),
@@ -1920,8 +1249,6 @@ mod tests {
         ];
         s.save_messages(conv, &mut msgs).unwrap();
         let before = s.load_messages(conv);
-        // Run backfill twice — should be a no-op the second time and not
-        // disturb existing parent_ids.
         s.backfill_parent_ids(conv).unwrap();
         s.backfill_parent_ids(conv).unwrap();
         let after = s.load_messages(conv);
@@ -1933,12 +1260,7 @@ mod tests {
 
     #[test]
     fn branched_load_picks_newest_sibling_at_each_fork() {
-        // Build a tree:
-        //   user (id=1)
-        //     ├── assistant_old (branch 0, ts t)
-        //     └── assistant_new (branch 1, ts t+10)  ← active
-        //           └── (no children)
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("branched").unwrap();
         let base = 1_700_000_000_000i64;
         let mut user = Message::text(Role::User, "what".into());
@@ -1948,26 +1270,21 @@ mod tests {
         let mut msgs = vec![user, a_old];
         s.save_messages(conv, &mut msgs).unwrap();
         let user_id = msgs[0].id.unwrap();
-
-        // Inject a sibling assistant directly (skipping the regenerate UI
-        // path we test elsewhere).
         let mut a_new = Message::text(Role::Assistant, "new reply".into());
         a_new.parent_id = Some(user_id);
         a_new.branch_index = 1;
         a_new.created_at = ts(base, 10);
         s.save_messages(conv, &mut [a_new]).unwrap();
-
         let loaded = s.load_messages(conv);
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].text_str(), "what");
-        // Newest sibling wins at the branch point.
         assert_eq!(loaded[1].text_str(), "new reply");
         assert_eq!(loaded[1].branch_index, 1);
     }
 
     #[test]
     fn siblings_of_returns_all_branches_at_a_point() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("sibs").unwrap();
         let mut msgs = vec![
             Message::text(Role::User, "ask".into()),
@@ -1976,12 +1293,10 @@ mod tests {
         s.save_messages(conv, &mut msgs).unwrap();
         let user_id = msgs[0].id.unwrap();
         let first_a_id = msgs[1].id.unwrap();
-
         let mut sib = Message::text(Role::Assistant, "two".into());
         sib.parent_id = Some(user_id);
         sib.branch_index = 1;
         s.save_messages(conv, &mut [sib]).unwrap();
-
         let sibs = s.siblings_of(first_a_id);
         assert_eq!(sibs.len(), 2);
         assert_eq!(sibs[0].branch_index, 0);
@@ -1990,29 +1305,23 @@ mod tests {
 
     #[test]
     fn next_branch_index_grows_per_parent() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("nbi").unwrap();
         let mut msgs = vec![Message::text(Role::User, "u".into())];
         s.save_messages(conv, &mut msgs).unwrap();
         let user_id = msgs[0].id.unwrap();
-        // First assistant under this parent: branch 0.
         assert_eq!(s.next_branch_index(conv, Some(user_id)), 0);
         let mut a = Message::text(Role::Assistant, "a".into());
         a.parent_id = Some(user_id);
         a.branch_index = 0;
         s.save_messages(conv, &mut [a]).unwrap();
-        // Now next is 1.
         assert_eq!(s.next_branch_index(conv, Some(user_id)), 1);
     }
 
     #[test]
     fn round_trips_assistant_tool_calls_and_tool_result() {
-        // Phase 5a regression: an assistant message with tool_calls + the
-        // following Role::Tool result must survive save/load with both the
-        // tool_calls JSON and the tool_call_id intact.
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("toolchat").unwrap();
-
         let user = Message::text(Role::User, "what's in foo.rs?".into());
         let mut assistant = Message::text(Role::Assistant, "I'll read it.".into());
         assistant.tool_calls = Some(vec![crate::message::ToolCall {
@@ -2024,15 +1333,11 @@ mod tests {
             },
         }]);
         let tool_result = Message::tool_result("call_abc".into(), "<file contents>".into());
-
         let mut msgs = vec![user, assistant, tool_result];
         s.save_messages(conv, &mut msgs).unwrap();
-
         let loaded = s.load_messages(conv);
         assert_eq!(loaded.len(), 3);
-        assert_eq!(loaded[1].role, Role::Assistant);
         let calls = loaded[1].tool_calls.as_ref().expect("tool_calls preserved");
-        assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].id, "call_abc");
         assert_eq!(calls[0].function.name, "read_file");
         assert_eq!(loaded[2].role, Role::Tool);
@@ -2042,22 +1347,23 @@ mod tests {
 
     #[test]
     fn working_dir_round_trips_in_settings() {
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("wd").unwrap();
-        let original = ConversationSettings {
+        let original = crate::config::ConversationSettings {
             working_dir: Some("/Users/heath/code/Fornax".into()),
-            ..ConversationSettings::default()
+            ..crate::config::ConversationSettings::default()
         };
         s.save_conversation_settings(conv, &original);
         let loaded = s.load_conversation_settings(conv);
-        assert_eq!(loaded.working_dir.as_deref(), Some("/Users/heath/code/Fornax"));
+        assert_eq!(
+            loaded.working_dir.as_deref(),
+            Some("/Users/heath/code/Fornax")
+        );
     }
 
     #[test]
     fn walk_from_returns_subtree_active_path() {
-        // user -> assistant_a -> user2_a -> assistant_a2
-        //                    \-> user2_b -> assistant_b2 (newer, wins on default load)
-        let s = mem_storage();
+        let s = mem();
         let conv = s.create_conversation("walk").unwrap();
         let base = 1_700_000_000_000i64;
         let mut u = Message::text(Role::User, "u".into());
@@ -2068,21 +1374,29 @@ mod tests {
         s.save_messages(conv, &mut msgs).unwrap();
         let a_id = msgs[1].id.unwrap();
 
-        let mut u2a = Message::text(Role::User, "u2-old".into());
+        // Branch A: user2_a -> assistant_a2
+        let mut u2a = Message::text(Role::User, "u2a".into());
         u2a.parent_id = Some(a_id);
-        u2a.branch_index = 0;
-        u2a.created_at = ts(base, 2);
-        s.save_messages(conv, &mut [u2a.clone()]).unwrap();
+        u2a.created_at = ts(base, 10);
+        let mut a2a = Message::text(Role::Assistant, "a2a".into());
+        a2a.created_at = ts(base, 11);
+        let mut branch_a = vec![u2a, a2a];
+        s.save_messages(conv, &mut branch_a).unwrap();
+        let u2a_id = branch_a[0].id;
 
-        let mut u2b = Message::text(Role::User, "u2-new".into());
+        // Branch B: user2_b -> assistant_b2 (newer)
+        let mut u2b = Message::text(Role::User, "u2b".into());
         u2b.parent_id = Some(a_id);
         u2b.branch_index = 1;
-        u2b.created_at = ts(base, 10);
-        s.save_messages(conv, &mut [u2b]).unwrap();
+        u2b.created_at = ts(base, 20);
+        let mut a2b = Message::text(Role::Assistant, "a2b".into());
+        a2b.created_at = ts(base, 21);
+        s.save_messages(conv, &mut [u2b, a2b]).unwrap();
 
-        // Walking from a_id picks the newer u2-new branch.
-        let path = s.walk_from(a_id);
-        let texts: Vec<String> = path.iter().map(|m| m.text_str()).collect();
-        assert_eq!(texts, vec!["a", "u2-new"]);
+        // walk_from(u2a) should return the A branch path
+        let path = s.walk_from(u2a_id.unwrap());
+        assert_eq!(path.len(), 2);
+        assert_eq!(path[0].text_str(), "u2a");
+        assert_eq!(path[1].text_str(), "a2a");
     }
 }

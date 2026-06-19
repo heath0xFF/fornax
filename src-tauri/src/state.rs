@@ -1,7 +1,10 @@
 use crate::config::Config;
+use crate::conversation_storage;
 use crate::mcp::McpManager;
-use crate::storage::Storage;
+use crate::project_storage;
 use crate::tools;
+use crate::usage_storage;
+use crate::preset_storage;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
@@ -17,12 +20,15 @@ pub struct PendingApproval {
 
 /// All long-lived app state, managed by Tauri and shared across commands.
 ///
-/// `Storage` wraps a rusqlite `Connection` (Send but not Sync), so it lives
-/// behind a `Mutex`. Every command locks briefly for synchronous DB work and
+/// Each storage module wraps a rusqlite `Connection` (Send but not Sync), so they live
+/// behind `Mutex`. Every command locks briefly for synchronous DB work and
 /// drops the guard before any `.await` — never hold a lock across a suspend
 /// point.
 pub struct AppState {
-    pub storage: Mutex<Storage>,
+    pub conversation_storage: Mutex<conversation_storage::ConversationStorage>,
+    pub project_storage: Mutex<project_storage::ProjectStorage>,
+    pub usage_storage: Mutex<usage_storage::UsageStorage>,
+    pub preset_storage: Mutex<preset_storage::PresetStorage>,
     pub config: Mutex<Config>,
     /// Cancellation tokens for in-flight chat streams, keyed by
     /// `conversation_id`. Each `run_turn` registers its token under its
@@ -44,12 +50,18 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let config = Config::load();
-        let storage = Storage::new();
+        let conversation_storage = conversation_storage::ConversationStorage::default();
+        let project_storage = project_storage::ProjectStorage::default();
+        let usage_storage = usage_storage::UsageStorage::default();
+        let preset_storage = preset_storage::PresetStorage::default();
         // Seed the default tools on first launch; tools are then (re)loaded from
         // disk on every turn, so edits take effect without a restart.
         tools::seed_defaults_if_empty(&tools::user_tools_dir());
         Self {
-            storage: Mutex::new(storage),
+            conversation_storage: Mutex::new(conversation_storage),
+            project_storage: Mutex::new(project_storage),
+            usage_storage: Mutex::new(usage_storage),
+            preset_storage: Mutex::new(preset_storage),
             config: Mutex::new(config),
             cancel: Mutex::new(HashMap::new()),
             pending_approvals: Mutex::new(HashMap::new()),

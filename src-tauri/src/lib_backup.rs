@@ -15,17 +15,14 @@ pub mod markdown;
 pub mod tools;
 #[path = "core/agents.rs"]
 pub mod agents;
-#[path = "core/conversation_storage.rs"]
-pub mod conversation_storage;
-#[path = "core/project_storage.rs"]
-pub mod project_storage;
-#[path = "core/usage_storage.rs"]
-pub mod usage_storage;
-#[path = "core/preset_storage.rs"]
-pub mod preset_storage;
 
 mod commands;
-
+mod commands/chat_commands;
+mod commands/config_commands;
+mod commands/project_commands;
+mod commands/usage_commands;
+mod commands/mcp_commands;
+mod commands/system_commands;
 mod mcp;
 mod metrics;
 mod state;
@@ -88,42 +85,52 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_config,
-            commands::save_config,
-            commands::fetch_models,
-            commands::list_conversations,
-            commands::load_conversation,
-            commands::delete_conversation,
-            commands::delete_all_conversations,
-            commands::rename_conversation,
-            commands::set_pinned,
-            commands::usage_stats,
-            commands::clear_usage,
-            commands::run_benchmark,
-            commands::list_projects,
-            commands::create_project,
-            commands::rename_project,
-            commands::delete_project,
-            commands::set_project_pinned,
-            commands::set_conversation_project,
-            commands::search_conversations,
-            commands::export_conversation,
-            commands::export_conversation_file,
-            commands::save_draft,
-            commands::list_agents,
-            commands::list_mcp_servers,
-            commands::reconnect_mcp,
-            commands::cancel_stream,
-            commands::send_message,
-            commands::regenerate,
-            commands::edit_message,
-            commands::message_siblings,
-            commands::walk_from,
-            commands::resolve_tool,
-            commands::list_presets,
-            commands::create_preset,
-            commands::delete_preset,
-            commands::set_metrics_target,
+            // Config commands
+            commands::config_commands::get_config,
+            commands::config_commands::save_config,
+            commands::config_commands::fetch_models,
+            
+            // Chat commands
+            commands::chat_commands::list_conversations,
+            commands::chat_commands::load_conversation,
+            commands::chat_commands::delete_conversation,
+            commands::chat_commands::delete_all_conversations,
+            commands::chat_commands::rename_conversation,
+            commands::chat_commands::set_pinned,
+            commands::chat_commands::search_conversations,
+            commands::chat_commands::edit_message,
+            commands::chat_commands::message_siblings,
+            commands::chat_commands::walk_from,
+            commands::chat_commands::cancel_stream,
+            commands::chat_commands::resolve_tool,
+            commands::chat_commands::save_draft,
+            
+            // Project commands
+            commands::project_commands::list_projects,
+            commands::project_commands::create_project,
+            commands::project_commands::rename_project,
+            commands::project_commands::delete_project,
+            commands::project_commands::set_project_pinned,
+            commands::project_commands::set_conversation_project,
+            
+            // Usage commands
+            commands::usage_commands::usage_stats,
+            commands::usage_commands::clear_usage,
+            commands::usage_commands::run_benchmark,
+            
+            // MCP commands
+            commands::mcp_commands::list_mcp_servers,
+            commands::mcp_commands::reconnect_mcp,
+            
+            // System commands
+            commands::system_commands::export_conversation,
+            commands::system_commands::export_conversation_file,
+            commands::system_commands::save_draft,
+            commands::system_commands::list_agents,
+            commands::system_commands::list_presets,
+            commands::system_commands::create_preset,
+            commands::system_commands::delete_preset,
+
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
